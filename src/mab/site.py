@@ -73,6 +73,14 @@ RF = 0.065
 CAPITAL = 1_000_000.0
 
 
+def _thin(curve: pd.Series) -> pd.Series:
+    """Weekly points for long equity curves (keeps the page light; the last day is kept)."""
+    weekly = curve.resample("W-FRI").last().dropna()
+    if len(curve) and (not len(weekly) or weekly.index[-1] != curve.index[-1]):
+        weekly = pd.concat([weekly[weekly.index < curve.index[-1]], curve.iloc[-1:]])
+    return weekly
+
+
 def engine_figure(bars_by_symbol: dict[str, pd.DataFrame], window: int = 200) -> go.Figure:
     """Growth of ₹10 lakh: price-above-SMA rule vs buy and hold, both after costs and tax."""
     fig = go.Figure()
@@ -86,11 +94,12 @@ def engine_figure(bars_by_symbol: dict[str, pd.DataFrame], window: int = 200) ->
         for name, res, color in ((f"above {window}-day SMA", rule, plots.SERIES[0]),
                                  ("buy and hold", hold, plots.TEXT)):
             w = res.equity / 1e5
+            w = _thin(w)
             fig.add_scatter(x=list(w.index.strftime("%Y-%m-%d")), y=w.round(2).tolist(),
                             name=name, visible=i == 0, line=dict(color=color, width=2),
                             hovertemplate="₹%{y:.2f} lakh")
     _symbol_dropdown(fig, symbols, 2)
-    fig = _layout(fig, "₹ lakh (started with 10), after costs and tax paid so far")
+    fig = _layout(fig, "₹ lakh, after costs and tax")
     fig.update_xaxes(range=None)  # show the whole history
     return fig
 
@@ -113,11 +122,12 @@ def rules_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure:
         lines["buy and hold"] = (pd.Series(1, index=bars.index), plots.TEXT)
         for name, (target, color) in lines.items():
             w = backtest(bars, target, ZERODHA_DELIVERY, INDIA_EQUITY, CAPITAL, RF).equity / 1e5
+            w = _thin(w)
             fig.add_scatter(x=list(w.index.strftime("%Y-%m-%d")), y=w.round(2).tolist(),
                             name=name, visible=i == 0, line=dict(color=color, width=2),
                             hovertemplate="₹%{y:.2f} lakh")
     _symbol_dropdown(fig, symbols, len(RULES) + 1)
-    fig = _layout(fig, "₹ lakh (started with 10), after costs and tax paid so far")
+    fig = _layout(fig, "₹ lakh, after costs and tax")
     fig.update_xaxes(range=None)
     return fig
 
@@ -195,7 +205,7 @@ def sweep_section(bars_by_symbol: dict[str, pd.DataFrame]) -> str:
                             (f"{first} buy and hold", d0["hold"], plots.TEXT)):
         line.add_scatter(x=data[first]["dates"], y=ys, name=name, line=dict(color=color, width=2),
                          hovertemplate="₹%{y:.2f} lakh")
-    line = _layout(line, "₹ lakh (started with 10), after costs and tax paid so far")
+    line = _layout(line, "₹ lakh, after costs and tax")
     line.update_xaxes(range=None)
     cfg = {"displaylogo": False, "responsive": True}
     return (
@@ -243,12 +253,13 @@ def walkforward_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure | s
     for i, sym in enumerate(symbols):
         for name, res in runs[sym]["results"].items():
             w = res.equity / 1e5
+            w = _thin(w)
             fig.add_scatter(x=list(w.index.strftime("%Y-%m-%d")), y=w.round(2).tolist(),
                             name=name, visible=i == 0,
                             line=dict(color=APPROACH_COLORS[name], width=2),
                             hovertemplate="₹%{y:.2f} lakh")
     _symbol_dropdown(fig, symbols, 4)
-    fig = _layout(fig, "₹ lakh (started with 10), after costs and tax paid so far")
+    fig = _layout(fig, "₹ lakh, after costs and tax")
     fig.update_xaxes(range=None)
     return fig
 
@@ -269,11 +280,12 @@ def overlay_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure:
                                   plots.TEXT),
                                  ("buy and hold", hold, plots.MUTED)):
             w = res.equity / 1e5
+            w = _thin(w)
             fig.add_scatter(x=list(w.index.strftime("%Y-%m-%d")), y=w.round(2).tolist(),
                             name=name, visible=i == 0, line=dict(color=color, width=2),
                             hovertemplate="₹%{y:.2f} lakh")
     _symbol_dropdown(fig, symbols, 3)
-    fig = _layout(fig, "₹ lakh (started with 10), after costs and tax paid so far")
+    fig = _layout(fig, "₹ lakh, after costs and tax")
     fig.update_xaxes(range=None)
     return fig
 
