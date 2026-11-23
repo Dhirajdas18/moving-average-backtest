@@ -3,7 +3,8 @@
 Short-term (held 12 months or less, s.111A): 20%. Long-term (s.112A): 12.5% above a ₹1.25 lakh
 exemption per financial year (April-March). Both from 23 July 2024. Plus 4% health and education
 cess. Short-term losses offset short- or long-term gains; long-term losses only long-term gains; the
-rest carries forward. Surcharge and the 8-year carry-forward limit are ignored. Not tax advice.
+rest carries forward. Interest on cash is taxed at an assumed 30% slab rate. Surcharge, advance
+tax dates and the 8-year carry-forward limit are ignored. Not tax advice.
 """
 
 from dataclasses import dataclass
@@ -15,7 +16,8 @@ class TaxRules:
     ltcg_rate: float = 0.125
     ltcg_exemption: float = 125_000.0
     cess: float = 0.04
-    long_term_days: int = 365  # held more than this many days = long-term
+    long_term_months: int = 12  # held more than this many months = long-term
+    interest_slab: float = 0.30  # interest on idle cash is taxed at your slab rate (assumed 30%)
 
 
 INDIA_EQUITY = TaxRules()

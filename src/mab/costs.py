@@ -12,10 +12,10 @@ class CostModel:
     brokerage: float = 0.0  # fraction of notional
     stt: float = 0.001  # securities transaction tax, buy and sell
     stamp: float = 0.00015  # stamp duty, buy only
-    exchange: float = 0.0000322  # NSE charge; sources quote 0.00297-0.00322%, higher used
+    exchange: float = 0.0000307  # NSE transaction charge (zerodha.com/charges, Nov 2026)
     sebi: float = 0.000001
     gst: float = 0.18  # on brokerage + exchange + SEBI fees
-    dp_charge: float = 16.0  # rupees per stock per sell day
+    dp_charge: float = 15.34  # rupees per stock per sell day, GST included
     slippage: float = 0.0005  # fill this fraction worse than the open, each side
 
     @classmethod

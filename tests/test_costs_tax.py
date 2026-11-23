@@ -4,16 +4,16 @@ from mab.costs import ZERODHA_DELIVERY, CostModel
 from mab.tax import INDIA_EQUITY, Carry, fy_tax
 
 
-def test_zerodha_round_trip_cost_matches_reference_spec():
+def test_zerodha_round_trip_cost():
     c = ZERODHA_DELIVERY
     n = 100_000
     buy, sell = c.buy_cost(n), c.sell_cost(n)
-    exch, sebi = 0.0000322 * n, 0.000001 * n
+    exch, sebi = 0.0000307 * n, 0.000001 * n
     gst = 0.18 * (exch + sebi)
     assert buy == pytest.approx(0.001 * n + 0.00015 * n + exch + sebi + gst)
-    assert sell == pytest.approx(0.001 * n + exch + sebi + gst + 16)
-    # MODEL_SPEC §6: about 0.2226% + DP for a round trip, before slippage
-    assert (buy + sell - 16) / n == pytest.approx(0.002226, abs=0.00002)
+    assert sell == pytest.approx(0.001 * n + exch + sebi + gst + 15.34)
+    # about 0.222% + DP for a round trip, before slippage
+    assert (buy + sell - 15.34) / n == pytest.approx(0.002223, abs=0.00002)
 
 
 def test_free_cost_model_charges_nothing():
@@ -50,5 +50,6 @@ def test_carried_short_term_loss_used_next_year():
     assert carry2 == Carry()
 
 
-def test_no_tax_rules_means_zero():
+def test_zero_gains_owe_no_tax_and_carry_nothing():
+    assert fy_tax(0.0, 0.0, Carry()) == (0.0, Carry())
     assert INDIA_EQUITY.stcg_rate == 0.20 and INDIA_EQUITY.ltcg_rate == 0.125

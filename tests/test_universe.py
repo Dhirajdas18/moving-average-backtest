@@ -38,3 +38,31 @@ def test_signal_moves_a_sleeve_to_cash_and_charges_costs():
     wealth = (1 + r).cumprod()
     # held for day 1 (flat), out from day 2 (misses the halving): one entry and one exit cost
     assert wealth.iloc[-1] == pytest.approx((1 - 0.001) ** 2)
+
+
+def test_members_exclude_the_rebalance_days_own_turnover():
+    idx = pd.bdate_range("2014-01-01", periods=60)
+    t = pd.DataFrame({"A": 10.0, "B": 5.0}, index=idx)
+    t.loc[idx[50], "B"] = 1e9  # spike on the rebalance day itself
+    assert members_at(t, idx[50], 1, window=1) == ["A"]  # window 1: only the day before
+
+
+def test_lake_repair_restores_real_moves_not_matched_to_a_corporate_action(tmp_path):
+    from mab.universe import load_lake
+
+    idx = pd.bdate_range("2020-03-02", periods=4)
+    panel = pd.DataFrame({
+        "date": list(idx) * 2,
+        "symbol": ["YES"] * 4 + ["SPLIT"] * 4,
+        "close": [100.0, 44.0, 44.0, 44.0, 100.0, 50.0, 50.0, 50.0],
+        "prev_close": [100.0, 100.0, 44.0, 44.0, 100.0, 100.0, 50.0, 50.0],
+        "ret": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],  # both big days zeroed by the lake
+        "ca_day": [False, True, False, False, False, True, False, False],
+        "turnover": 1.0,
+    })
+    panel.to_parquet(tmp_path / "panel.parquet")
+    pd.DataFrame({"date": [idx[1]], "symbol": ["SPLIT"], "ratio": [2.0]}).to_parquet(
+        tmp_path / "actions.parquet")
+    prices, _ = load_lake(tmp_path)
+    assert prices["YES"].iloc[-1] / prices["YES"].iloc[0] == pytest.approx(0.44)  # real crash kept
+    assert prices["SPLIT"].iloc[-1] / prices["SPLIT"].iloc[0] == pytest.approx(1.0)  # split ignored

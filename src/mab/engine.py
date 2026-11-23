@@ -24,6 +24,11 @@ from mab.returns import TRADING_DAYS
 from mab.tax import INDIA_EQUITY, Carry, TaxRules, fy_tax
 
 
+def is_long_term(bought: pd.Timestamp, sold: pd.Timestamp, months: int = 12) -> bool:
+    """Indian listed equity is long-term when held for more than 12 months (calendar months)."""
+    return sold > bought + pd.DateOffset(months=months)
+
+
 def financial_year(d: pd.Timestamp) -> int:
     """Indian financial year label: April 2023 - March 2024 is 2023."""
     return d.year if d.month >= 4 else d.year - 1
@@ -37,7 +42,7 @@ class Result:
     costs_paid: pd.Series
     trades: pd.DataFrame
     liquidation_after_tax: float
-    gains: pd.DataFrame  # per financial year: short_term, long_term, tax (last row = liquidation)
+    gains: pd.DataFrame  # per FY: short_term, long_term, interest, tax (last row = liquidation)
 
     @property
     def returns(self) -> pd.Series:
@@ -64,13 +69,14 @@ def backtest(
     buy_rate = costs.buy_cost(1.0)  # buy charges are proportional
     sell_rate = costs.sell_cost(1.0) - costs.dp_charge
     daily_rf = rf / TRADING_DAYS
-    long_days = tax.long_term_days if tax else 365
+    long_months = tax.long_term_months if tax else 12
 
     cash = float(capital)
     lots: list[list] = []  # [buy date, shares, cost basis], oldest first
     gains: dict[int, list[float]] = {}  # financial year -> [short-term, long-term]
     carry = Carry()
-    fy_rows: dict[int, tuple[float, float, float]] = {}
+    fy_rows: dict[int, tuple[float, float, float, float]] = {}
+    interest: dict[int, float] = {}  # financial year -> interest earned on cash
     trades, open_trade = [], None
     eq, pos, taxes, fees = (np.zeros(len(idx)) for _ in range(4))
 
@@ -87,6 +93,8 @@ def backtest(
             open_trade = {"entry_date": day, "entry_price": fill, "shares": n, "invested": 0.0,
                           "proceeds": 0.0}
         open_trade["invested"] += notional + cost
+        if open_trade["entry_date"] != day:
+            open_trade["shares"] += n
         return cost
 
     def realise(day, n_shares, fill):
@@ -102,7 +110,7 @@ def backtest(
             part = lot[2] * take / lot[1]
             share = take / n_shares
             gain = take * fill - deductible * share - part
-            long = (day - lot[0]).days > long_days
+            long = is_long_term(lot[0], day, long_months)
             gains.setdefault(financial_year(day), [0.0, 0.0])[1 if long else 0] += gain
             lot[1] -= take
             lot[2] -= part
@@ -121,7 +129,9 @@ def backtest(
             fy = financial_year(idx[i - 1])
             st, lt = gains.pop(fy, [0.0, 0.0])
             due, carry = fy_tax(st, lt, carry, tax)
-            fy_rows[fy] = (st, lt, due)
+            earned = interest.pop(fy, 0.0)
+            due += earned * tax.interest_slab * (1 + tax.cess)
+            fy_rows[fy] = (st, lt, earned, due)
             taxes[i] = due
             if due > cash and held() > 0:
                 fill = o * (1 - costs.slippage)
@@ -147,6 +157,8 @@ def backtest(
                 fill = o * (1 - costs.slippage)
                 fees[i] += realise(day, min(-gap / fill, shares), fill)
         # 3. close: cash earns interest, mark the position
+        if cash > 0:
+            interest[financial_year(day)] = interest.get(financial_year(day), 0.0) + cash * daily_rf
         cash *= 1 + daily_rf
         eq[i] = cash + held() * closes[i]
         pos[i] = held() * closes[i] / eq[i] if eq[i] else 0.0
@@ -154,22 +166,27 @@ def backtest(
     # what you'd keep after selling everything at the last close and settling tax
     final = cash
     shares = held()
+    still_open, open_trade = open_trade, None  # the final sale is not a real trade
+    net_sale = 0.0
     if shares > 0:
         fill = closes[-1] * (1 - costs.slippage)
-        final += shares * fill - costs.sell_cost(shares * fill)
+        net_sale = shares * fill - costs.sell_cost(shares * fill)
+        final += net_sale
         if tax is not None:
             realise(idx[-1], shares, fill)
     if tax is not None:
         fy = financial_year(idx[-1])
         st, lt = gains.pop(fy, [0.0, 0.0])
         due = fy_tax(st, lt, carry, tax)[0]
-        fy_rows[fy] = (st, lt, due)
+        earned = interest.pop(fy, 0.0)
+        due += earned * tax.interest_slab * (1 + tax.cess)
+        fy_rows[fy] = (st, lt, earned, due)
         final -= due
 
-    if open_trade is not None:  # still invested at the end: value it at the last close
-        trades.append(open_trade | {"exit_date": idx[-1], "exit_price": closes[-1],
-                                    "proceeds": open_trade["proceeds"] + shares * closes[-1],
-                                    "open": True})
+    if still_open is not None:  # still invested at the end: valued as if sold at the last close
+        trades.append(still_open | {"exit_date": idx[-1],
+                                    "exit_price": closes[-1] * (1 - costs.slippage),
+                                    "proceeds": still_open["proceeds"] + net_sale, "open": True})
     t = pd.DataFrame(trades, columns=["entry_date", "entry_price", "shares", "invested",
                                       "exit_date", "exit_price", "proceeds", "open"])
     t["open"] = t["open"].eq(True)
@@ -184,5 +201,6 @@ def backtest(
         trades=t,
         liquidation_after_tax=float(final),
         gains=pd.DataFrame.from_dict(fy_rows, orient="index",
-                                     columns=["short_term", "long_term", "tax"]).sort_index(),
+                                     columns=["short_term", "long_term", "interest", "tax"]
+                                     ).sort_index(),
     )

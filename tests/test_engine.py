@@ -115,3 +115,60 @@ def test_partial_sells_use_the_oldest_lot_first_for_long_term_status():
     assert g["short_term"] == pytest.approx(0.0)
     # half of the 2,000,000 position sold at 200 from shares bought at 100
     assert g["long_term"] == pytest.approx((200 - 100) * 1_000_000 / 200, rel=1e-6)
+
+
+def test_open_trade_at_the_end_is_counted_once_with_tax_on():
+    idx = pd.bdate_range("2023-01-02", periods=60)
+    px = np.linspace(100, 110, 60)
+    bars = pd.DataFrame({"open": px, "close": px}, index=idx)
+    out = backtest(bars, pd.Series(1, index=idx), FREE, INDIA_EQUITY, 1_000_000, 0.0)
+    t = out.trades.iloc[-1]
+    assert t["open"]
+    assert t["return"] == pytest.approx(110 / px[1] - 1, rel=1e-6)  # bought at day 1's open
+
+
+def test_long_term_means_more_than_twelve_calendar_months():
+    from mab.engine import is_long_term
+
+    assert not is_long_term(pd.Timestamp("2024-01-01"), pd.Timestamp("2025-01-01"))  # 366 days
+    assert is_long_term(pd.Timestamp("2024-01-01"), pd.Timestamp("2025-01-02"))
+
+
+def test_cash_interest_is_taxed_at_the_slab_rate_each_april():
+    idx = pd.bdate_range("2023-01-02", "2023-04-28")
+    bars = pd.DataFrame({"open": 100.0, "close": 100.0}, index=idx)
+    out = backtest(bars, pd.Series(0, index=idx), FREE, INDIA_EQUITY, 1_000_000, 0.0504)
+    march = out.equity[out.equity.index < "2023-04-01"].iloc[-1]
+    interest = march - 1_000_000
+    assert out.tax_paid.sum() == pytest.approx(interest * 0.30 * 1.04, rel=1e-6)
+
+
+def test_forced_sale_pays_the_tax_when_fully_invested():
+    idx = pd.bdate_range("2023-01-02", "2023-05-31")
+    px = np.where(idx < pd.Timestamp("2023-02-01"), 100.0, 150.0)
+    bars = pd.DataFrame({"open": px, "close": px}, index=idx)
+    t = pd.Series(1, index=idx)
+    t[(idx >= "2023-03-01") & (idx < "2023-03-06")] = 0  # realise a short-term gain, buy back
+    out = backtest(bars, t, FREE, INDIA_EQUITY, 1_000_000, 0.0)
+    april = out.tax_paid[out.tax_paid > 0]
+    assert len(april) == 1
+    day = april.index[0]
+    # equity drops by exactly the tax on the day it is paid (shares sold at the same price)
+    before = out.equity[out.equity.index < day].iloc[-1]
+    assert out.equity[day] == pytest.approx(before - april.iloc[0], rel=1e-9)
+    assert out.position[day] == pytest.approx(1.0, abs=1e-9)
+
+
+def test_short_term_loss_carries_into_the_next_year_through_the_engine():
+    idx = pd.bdate_range("2022-01-03", "2023-12-29")
+    px = np.select([idx < pd.Timestamp("2022-02-01"), idx < pd.Timestamp("2023-01-02")],
+                   [100.0, 80.0], 120.0)
+    bars = pd.DataFrame({"open": px, "close": px}, index=idx)
+    t = pd.Series(0, index=idx)
+    t[idx < pd.Timestamp("2022-03-01")] = 1   # buy at 100, sell at 80: loss in FY2021-22
+    t[(idx >= "2022-12-01") & (idx < "2023-02-01")] = 1  # buy at 80, sell at 120 in FY2022-23
+    out = backtest(bars, t, FREE, INDIA_EQUITY, 1_000_000, 0.0)
+    loss = 1_000_000 * 0.2
+    capital2 = 1_000_000 - loss
+    gain = capital2 * 0.5
+    assert out.gains.loc[2022, "tax"] == pytest.approx((gain - loss) * 0.20 * 1.04, rel=1e-6)

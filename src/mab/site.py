@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from mab import plots
 from mab.costs import ZERODHA_DELIVERY
 from mab.data import INDEX, SYMBOLS, load_bars
-from mab.engine import backtest
+from mab.reports import evaluated
 from mab.signals import above_ma, crossover
 from mab.stats import split_growth, trade_stats
 from mab.sweep import FAST, SLOW, crossover_grid
@@ -87,9 +87,9 @@ def engine_figure(bars_by_symbol: dict[str, pd.DataFrame], window: int = 200) ->
     symbols = list(bars_by_symbol)
     for i, sym in enumerate(symbols):
         bars = bars_by_symbol[sym]
-        rule = backtest(bars, above_ma(bars["close"], window), ZERODHA_DELIVERY, INDIA_EQUITY,
+        rule = evaluated(bars, above_ma(bars["close"], window), ZERODHA_DELIVERY, INDIA_EQUITY,
                         CAPITAL, RF)
-        hold = backtest(bars, pd.Series(1, index=bars.index), ZERODHA_DELIVERY, INDIA_EQUITY,
+        hold = evaluated(bars, pd.Series(1, index=bars.index), ZERODHA_DELIVERY, INDIA_EQUITY,
                         CAPITAL, RF)
         for name, res, color in ((f"above {window}-day SMA", rule, plots.SERIES[0]),
                                  ("buy and hold", hold, plots.TEXT)):
@@ -121,7 +121,7 @@ def rules_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure:
         lines = {name: (make(bars["close"]), color) for name, (make, color) in RULES.items()}
         lines["buy and hold"] = (pd.Series(1, index=bars.index), plots.TEXT)
         for name, (target, color) in lines.items():
-            w = backtest(bars, target, ZERODHA_DELIVERY, INDIA_EQUITY, CAPITAL, RF).equity / 1e5
+            w = evaluated(bars, target, ZERODHA_DELIVERY, INDIA_EQUITY, CAPITAL, RF).equity / 1e5
             w = _thin(w)
             fig.add_scatter(x=list(w.index.strftime("%Y-%m-%d")), y=w.round(2).tolist(),
                             name=name, visible=i == 0, line=dict(color=color, width=2),
@@ -140,7 +140,7 @@ def trades_table(bars_by_symbol: dict[str, pd.DataFrame]) -> str:
     rows = []
     for sym, bars in bars_by_symbol.items():
         for rule in ("SMA-200 filter", "SMA 50/200 cross"):
-            t = backtest(bars, RULES[rule][0](bars["close"]), ZERODHA_DELIVERY, INDIA_EQUITY,
+            t = evaluated(bars, RULES[rule][0](bars["close"]), ZERODHA_DELIVERY, INDIA_EQUITY,
                          CAPITAL, RF).trades
             if len(t) < 4:
                 continue
@@ -171,13 +171,13 @@ def sweep_section(bars_by_symbol: dict[str, pd.DataFrame]) -> str:
         bars = bars_by_symbol[sym]
         m, _ = crossover_grid(bars)
         g = m["sharpe"].unstack("slow").reindex(index=list(FAST), columns=list(SLOW))
-        hold = backtest(bars, pd.Series(1, index=bars.index), ZERODHA_DELIVERY, INDIA_EQUITY,
+        hold = evaluated(bars, pd.Series(1, index=bars.index), ZERODHA_DELIVERY, INDIA_EQUITY,
                         CAPITAL, RF)
         r = bars["close"].pct_change().iloc[max(SLOW):] - RF / 252
         hold_sr = float(r.mean() / r.std() * (252 ** 0.5))
         curves = {}
         for (f, sl) in m.index:
-            res = backtest(bars, crossover(bars["close"], f, sl), ZERODHA_DELIVERY, INDIA_EQUITY,
+            res = evaluated(bars, crossover(bars["close"], f, sl), ZERODHA_DELIVERY, INDIA_EQUITY,
                            CAPITAL, RF)
             curves[f"{f}/{sl}"] = _weekly(res.equity)
         best = m["sharpe"].idxmax()
@@ -273,7 +273,7 @@ def overlay_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure:
     for i, sym in enumerate(symbols):
         bars = bars_by_symbol[sym]
         c = overlay_compare(bars, "SMA-200 filter")
-        hold = backtest(bars, pd.Series(1, index=bars.index), ZERODHA_DELIVERY, INDIA_EQUITY,
+        hold = evaluated(bars, pd.Series(1, index=bars.index), ZERODHA_DELIVERY, INDIA_EQUITY,
                         CAPITAL, RF)
         for name, res, color in (("SMA-200 filter", c["rule_result"], plots.SERIES[0]),
                                  (f"fixed {c['exposure']:.0%} invested", c["mix_result"],

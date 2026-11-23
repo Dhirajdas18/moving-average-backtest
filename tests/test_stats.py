@@ -51,6 +51,6 @@ def test_engine_records_gains_by_financial_year_split_short_and_long():
     t[(idx >= "2022-03-03") & (idx < "2023-04-05")] = 1
     out = backtest(bars, t, CostModel.free(), INDIA_EQUITY, 1_000_000, 0.0)
     g = out.gains
-    assert list(g.columns) == ["short_term", "long_term", "tax"]
+    assert list(g.columns) == ["short_term", "long_term", "interest", "tax"]
     assert g.loc[2021, "short_term"] == pytest.approx(200_000)  # FY 2021-22 (Jan-Mar 2022)
     assert g.loc[2021, "tax"] == pytest.approx(200_000 * 0.20 * 1.04)

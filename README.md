@@ -24,7 +24,10 @@ rebuilt weekly from fresh data by GitHub Actions.
 
 ## Findings
 
-### 1. A realistic backtest takes 1.7–2.3 points a year off a 200-day rule, two to three times what buy and hold pays
+All comparisons start trading on the same day (mid-March 2014), once the slowest moving average used
+(300 days) exists, so buy and hold gets no head start over the rules.
+
+### 1. A realistic backtest takes 2.5–3.1 points a year off a 200-day rule, roughly three to five times what buy and hold pays
 
 <table><tr>
 <td><a href="docs/img/engine_waterfall.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/engine_waterfall.png"><img src="docs/img/engine_waterfall.gif" alt="NIFTY 200-day rule growth as fills, costs and tax are added"></picture></a></td>
@@ -32,17 +35,18 @@ rebuilt weekly from fresh data by GitHub Actions.
 </tr></table>
 
 The rule holds while the close is above its 200-day simple moving average and sits in cash (earning
-6.5%) otherwise. It traded 48–72 times over 2013–2026, about 4–5 round trips a year.
+6.5%, taxed as interest) otherwise. It traded 48–72 times in 12.7 years, about 4–6 round trips a year.
 
 - **NIFTY:** 8.4% a year in the common naive backtest (trade at the signal's own close, no costs, no tax),
-  6.8% after next-open fills, costs and tax. Buy and hold kept 10.2% after the same costs and tax.
-- **Costs** took 1.2–1.8 points a year from the rule on every series, and **tax** another 0.2–1.0. Buy and
-  hold lost 0.6–1.0 points in total, mostly the long-term tax on selling at the end.
-- **Filling at the next open instead of the signal close** moved results by −1.2 to +0.4 points, in both
-  directions (HDFCBANK −1.2, TCS +0.4). The overnight gap is noise for a slow rule, but it is real money
+  6.2% after next-open fills, costs and tax. Buy and hold kept 10.6% after the same costs and tax.
+- **Costs** took 1.3–1.9 points a year from the rule on every series, and **tax** (on gains and on the
+  interest earned while in cash) another 1.0–1.7. Buy and hold lost 0.5–1.1 points in total, mostly the
+  long-term tax on selling at the end.
+- **Filling at the next open instead of the signal close** moved results by −1.4 to +0.7 points, in both
+  directions (HDFCBANK −1.4, TCS +0.7). The overnight gap is noise for a slow rule, but it is real money
   for a fast one.
-- On these six series, the 200-day rule kept less than buy and hold on every one. Whether that is the
-  rule or just these years is the subject of later sections.
+- On all six series the 200-day rule kept less than buy and hold. Whether that is the rule or just these
+  years is the subject of later sections.
 
 ### 2. Filters whipsaw, crossovers lag, and buy and hold beat both on five of six series
 
@@ -55,8 +59,8 @@ Four textbook rules at standard settings (not tuned, so no parameter was chosen 
 filter (hold while the close is above its 200-day average) and a 50/200 crossover (hold while the 50-day
 average is above the 200-day), each with a simple (SMA) or exponential (EMA) average.
 
-- **Filters whipsaw.** They made 4.2–4.3 round trips a year, and 72–73% of their trades ended within 30 days,
-  mostly at a small loss (win rate 22–23%). Each false signal pays costs and often short-term tax.
+- **Filters whipsaw.** They made about 4.5 round trips a year, and 72–73% of their trades ended within 30
+  days, mostly at a small loss (win rate 23–25%). Each false signal pays costs and often short-term tax.
 - **Crossovers lag.** They traded 0.6–0.7 times a year with few whipsaws, but exit late. In 2020 the SMA
   50/200 cross sold NIFTY on 19 Mar, 33% below the peak and four days before the bottom, and bought back
   on 21 Aug, 49% above the low. The SMA filter sold on 26 Feb (6% below the peak) but also bought back
@@ -68,28 +72,28 @@ average is above the 200-day), each with a simple (SMA) or exponential (EMA) ave
 
 - **No rule style won consistently.** Crossovers beat filters on only 3 of 6 series (SMA) and 4 of 6 (EMA);
   the higher averages come from a few series.
-- **Buy and hold kept the most on 5 of 6 series.** The exception was ITC, where the EMA cross kept 8.0% a
-  year against 6.3%. The rules did cut the worst drawdown (33–38% on average, against 47%), which section
+- **Buy and hold kept the most on 5 of 6 series.** The exception was ITC, where the EMA cross kept 7.6% a
+  year against 5.1%. The rules did cut the worst drawdown (34–39% on average, against 47%), which section
   6 tests against a fair same-exposure benchmark.
 
-### 3. The 200-day filter is right a quarter of the time, and three trades carry all of its profit
+### 3. The 200-day filter is right about a quarter of the time, and three trades carry all of its profit
 
 <table><tr>
 <td><a href="docs/img/trades_hist.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/trades_hist.png"><img src="docs/img/trades_hist.gif" alt="Distribution of NIFTY 200-day filter trade returns"></picture></a></td>
 <td><a href="docs/img/trades_concentration.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/trades_concentration.png"><img src="docs/img/trades_concentration.gif" alt="Best three trades alone vs all other trades compounded, six NSE series"></picture></a></td>
 </tr></table>
 
-- **Rarely right, right big.** The 200-day filter won only 14–26% of its trades, but its average win was
-  5–9× its average loss (NIFTY: +11.1% vs −1.6%). At that payoff it breaks even with a 10–17% win rate, so a
-  low win rate is not by itself a flaw.
-- **Losers are cut fast, winners run.** The median losing trade lasted 3–6 days; the median winner 148–188
-  days (TCS: 48).
-- **Three trades carry everything.** On every series, the three best trades alone compounded to +165% to
-  +303%, and all the other 45–69 trades together *lost* 25% to 65%. Measured in log returns, so trade size
+- **Rarely right, right big.** The 200-day filter won only 15–29% of its trades, but its average win was
+  5–9× its average loss (NIFTY: +10.6% vs −1.5%). At that payoff it breaks even with a 10–17% win rate, so
+  a low win rate is not by itself a flaw.
+- **Losers are cut fast, winners run.** The median losing trade lasted 3.5–6 days; the median winner
+  145–188 days (TCS: 48).
+- **Three trades carry everything.** On every series, the three best trades alone compounded to +153% to
+  +302%, and all the other 45–69 trades together *lost* 23% to 62%. Measured in log returns, so trade size
   doesn't matter. Miss one big trend (a late order, a day of hesitation, an outage) and most of the result
   is gone, which is why such rules are hard to follow in practice.
-- **The 50/200 cross** trades 8–11 times in 14 years and wins more often (27–89%), but with so few trades
-  its statistics rest on a handful of outcomes.
+- **The 50/200 cross** made only 8–11 trades and won more often (27–89%), but with so few trades its
+  statistics rest on a handful of outcomes.
 
 ### 4. The best of 40 parameter pairs beats buy and hold in hindsight, and that proves nothing
 
@@ -112,7 +116,7 @@ click any cell to see that pair's equity curve.
 - **The probability of backtest overfitting** (Bailey et al., 2017) splits the history into halves every
   possible way (252 splits) and asks how often the in-sample winner falls to the bottom half out of sample.
   It was 0.44–0.84, and 0.5 or higher on 5 of 6 series, so picking the best pair was no better than picking
-  at random. One sample's PBO is itself noisy (it ranges 0.1–0.95 on pure noise in tests), so the
+  at random. One sample's PBO is itself noisy (on pure noise it ranged from about 0.03 to 0.9 across test seeds), so the
   consistent pattern across series matters more than any single value.
 - The 40 pairs overlap heavily (neighbours behave alike), so they are fewer than 40 independent tries, and
   counting all 40 sets the bar a little too high. The extreme opposite, no allowance at all as if only one
@@ -130,14 +134,15 @@ Walk-forward optimisation is the honest version of "use the best setting": each 
 with the best Sharpe over the previous three years is chosen and traded for that year, then the process
 repeats. Every approach below is measured over the same test years, 2018–2026, after costs and tax.
 
-- **Walk-forward kept −0.6% to +4.9% a year.** It was beaten on every series by the textbook 50/200 cross
-  (3.7–10.0%), by buy and hold (5.4–13.6%), and by the best pair chosen with hindsight (5.8–13.6%), which
+- **Walk-forward kept −6.2% to +3.8% a year.** It was beaten on every series by the textbook 50/200 cross
+  (3.2–9.3%), by buy and hold (5.4–13.6%), and by the best pair chosen with hindsight (5.2–12.9%), which
   no one could actually have traded.
 - **The chosen pair stopped working the moment it was chosen.** Its Sharpe averaged 0.6–0.9 over its three
-  training years and −0.15 to −0.54 in the year it was traded, on every series. In its trading year it
-  ranked, on average, between the 26th and 44th percentile of all 40 pairs: below the median on all six, so
-  picking last period's winner was worse than picking at random. This is section 4's overfitting
-  probability seen year by year.
+  training years and −0.15 to −0.68 in the year it was traded, on every series. In its trading year it
+  ranked, on average, between the 21st and 44th percentile of all 40 pairs, below the middle on all six.
+  That rests on about nine yearly picks per series, so it is not proof that last period's winner is worse
+  than a random pick, but it clearly didn't help. This is section 4's overfitting probability seen year by
+  year.
 - **The pick kept changing:** six to eight switches in eight years (NIFTY: 30/150, 5/50, 75/250, 20/50,
   20/50, 5/50, 50/100, 50/100, 20/50).
 - **Five training years instead of three** gave the same picture: walk-forward below buy and hold on 6 of 6.
@@ -151,22 +156,23 @@ repeats. Every approach below is measured over the same test years, 2018–2026,
 <td><a href="docs/img/overlay_compare.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/overlay_compare.png"><img src="docs/img/overlay_compare.gif" alt="Growth and worst drawdown: trend rule vs same-exposure fixed mix, 12 cases"></picture></a></td>
 </tr></table>
 
-Section 2 found the rules cut the worst drawdown (33–38% against 47% for buy and hold). But they were only
-invested 57–80% of the time, and holding less stock lowers risk by itself. The fair test is a fixed mix
-holding the rule's average exposure steadily (rebalanced when it drifts 5%, with FIFO tax lots), after the
-same costs and tax, so any difference comes from timing alone. Two rules × six series = 12 cases.
+Section 2 found the rules cut the worst drawdown (34–39% against 47% for buy and hold). But they were only
+invested 57–81% of the time, and holding less stock lowers risk by itself. The fair test is a fixed mix
+holding the rule's average exposure steadily (rebalanced when it drifts 5 percentage points, with FIFO tax
+lots), after the same costs and tax, so any difference comes from timing alone. Two rules × six series = 12
+cases.
 
-- **Growth:** the fixed mix kept more in 11 of 12 cases (NIFTY: 9.7% a year at a steady 74% against 6.8% for
-  the 200-day filter). The one exception was ITC's EMA 50/200 cross.
+- **Growth:** the fixed mix kept more in 10 of 12 cases (NIFTY: 9.5% a year at a steady 74% against 6.2% for
+  the 200-day filter). The exceptions were the EMA 50/200 cross on TCS (8.5% vs 8.2%) and ITC (7.6% vs 5.7%).
 - **Risk:** the rule had the smaller worst drawdown in only 6 of 12 cases, a coin flip, and the better worst
-  calendar year in 2 of 12. Whipsaw years (2015–16, 2018) hurt the rules more than steady holding did.
-- **Sharpe ratio:** better for the rule in 2 of 12 cases.
+  calendar year in 3 of 12. Whipsaw years hurt the rules more than steady holding did.
+- **Sharpe ratio:** better for the rule in 1 of 12 cases.
 - On NIFTY the filter spent years in shallow drawdowns (2015–17, 2022–23) while the steady mix recovered.
-  The drawdown benefit seen earlier came from holding less, not from the timing. This matches what a
+  The drawdown benefit seen earlier came mostly from holding less, not from the timing. This matches what a
   volatility-target overlay showed in the
   [returns-volatility study](https://github.com/Dhirajdas18/returns-volatility-dashboard).
 
-### 7. Testing on today's stock list overstated buy and hold by 18 points a year
+### 7. Testing on today's 50 most-traded stocks overstated buy and hold by about 19 points a year
 
 <table><tr>
 <td><a href="docs/img/survivorship_growth.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/survivorship_growth.png"><img src="docs/img/survivorship_growth.gif" alt="Growth of 1 rupee: today's 50 most-traded stocks vs the point-in-time top 50, buy and hold and 200-day filter"></picture></a></td>
@@ -176,35 +182,45 @@ same costs and tax, so any difference comes from timing alone. Two rules × six 
 Every section above used today's tickers, and so does most free data: Yahoo only lists companies that
 still trade. To measure the damage, this section uses NSE's daily bhavcopy files, which include every stock
 that traded, delistings included. Universe: the 50 most-traded NSE stocks (median daily turnover over the
-previous six months), re-chosen each January from 2014 (**point-in-time**), against today's 50 most-traded
-stocks applied to the whole history (**today's list**). Equal weight, rebalanced yearly, after costs, before
-tax.
+previous six months, known before each rebalance), re-chosen each January from 2014 (**point-in-time**),
+against today's 50 most-traded stocks applied to the whole history (**today's list**). Equal weight,
+rebalanced yearly, after costs, before tax.
 
-- **Buy and hold:** today's list turned ₹1 into ₹23 (27.6% a year). The honest point-in-time universe turned
-  it into ₹3.4 (9.9% a year). Choosing stocks by today's list quietly picks the ones that went on to grow,
-  since turnover rises with price, and that adds about 18 points a year.
+- **Buy and hold:** today's list turned ₹1 into ₹25 (28.3% a year). The honest point-in-time universe turned
+  it into ₹3.2 (9.5% a year). Today's most-traded list includes recent winners such as BSE and MCX, so
+  much of this gap is hindsight winner-picking (turnover rises with price) rather than delisted
+  companies alone. A list chosen by market value, such as today's NIFTY 50, would probably show a smaller
+  gap; that wasn't measured here.
 - **29 of the 2014 top 50 aren't in today's list.** Most simply lost turnover rank, but seven lost more
-  than half their value: RCOM (−100%), Reliance Capital and Jaiprakash Associates (−97%), Reliance
-  Infrastructure (−87%), YES Bank (−84%), Zee (−82%) and Reliance Power (−76%). A today's-list backtest
+  than half their value: RCOM (−99%), Reliance Capital and Jaiprakash Associates (−97%), Reliance
+  Infrastructure (−87%), YES Bank (−78%), Reliance Power (−76%) and Zee (−75%). A today's-list backtest
   never holds them.
-- **The 200-day filter was overstated too,** by 13 points a year (23.2% vs 9.9%).
+- **The 200-day filter was overstated too,** by 14 points a year (23.8% vs 9.5%).
 - **A lead, not a finding:** on the honest universe, the per-stock 200-day filter matched buy and hold's
-  growth (9.9%) with a much smaller worst drawdown (−15% vs −51%), and beat a fixed mix with the same 58%
-  average exposure (9.0% a year, −29% drawdown). Across 50 stocks each filter stepped aside from its own
+  growth (9.5%) with a much smaller worst drawdown (−15% vs −51%), and beat a fixed mix with the same 58%
+  average exposure (8.7% a year, −29% drawdown). Across 50 stocks each filter stepped aside from its own
   collapse, which a single-stock test (section 6) can't show. But it is one period, before tax (a filter
-  trading 50 stocks would realise many short-term gains), with simplified costs and close-to-close fills,
-  so it needs the full engine and a walk-forward test before it means anything.
+  trading 50 stocks would realise many short-term gains), with simplified costs, close-to-close fills and
+  a costless daily-rebalanced mix, so it needs the full engine and a walk-forward test before it means
+  anything.
+- **Data note:** the source panel sets every daily move above 35% to zero as a possible corporate action.
+  This section restores the raw return on such days unless they match a real split or bonus, so genuine
+  crashes like YES Bank's −56% on 6 Mar 2020 count. Delisted stocks exit at their last traded price,
+  which flatters the point-in-time universe (the conservative direction for this comparison).
 - Reproduce with `MAB_LAKE_DIR=<folder with panel.parquet> uv run mab report survivorship`. The NSE data
   isn't committed; only the aggregate results (`docs/data/survivorship.json`) are.
 
 ## Assumptions
 
-Capital ₹10 lakh. Zerodha delivery charges as of Nov 2026 ([zerodha.com/charges](https://zerodha.com/charges)):
-STT 0.1% each side, stamp duty 0.015% on buys, NSE 0.00322%, SEBI 0.0001%, GST 18% on fees, ₹16 DP charge
-per sell, plus 0.05% slippage each side. Tax with today's rules for every year: 20% short-term, 12.5%
-long-term above ₹1.25 lakh a year, 4% cess; STT is not deductible; losses set off and carried forward.
-Fractional shares, dividends reinvested, NIFTY traded as if it were an index fund. Not investment or tax
-advice.
+Capital ₹10 lakh. Zerodha delivery charges as listed on [zerodha.com/charges](https://zerodha.com/charges)
+in Nov 2026: STT 0.1% each side, stamp duty 0.015% on buys, NSE 0.00307%, SEBI 0.0001%, GST 18% on fees,
+₹15.34 DP charge per sell (GST included), plus 0.05% slippage each side. Tax with today's rules for every
+year: 20% short-term, 12.5% long-term above ₹1.25 lakh a year (long-term = held more than 12 months), 4%
+cess; STT is not deductible; losses set off and carried forward; interest on cash taxed at an assumed 30%
+slab rate. Tax is settled on the first trading day of each April (advance-tax dates are ignored).
+Fractional shares. Stock prices are dividend-adjusted, with dividends reinvested untaxed. **NIFTY is the
+price index and excludes dividends**, which understates NIFTY buy and hold against the rules (the rules'
+cash earns interest), so the NIFTY comparisons favour the rules. Not investment or tax advice.
 
 ## Quick start
 

@@ -32,6 +32,22 @@ def _label_ends(ax, lines: dict, colors: dict, gap: float | None = None) -> None
         plots.label_line_end(ax, lines[name].index[-1], floor, name, colors[name])
 
 
+WARMUP = 300  # trading days before any comparison starts: the slowest average (300) must exist
+
+
+def _cagr_run(res) -> float:
+    return cagr_of(res.liquidation_after_tax, res.equity.index)
+
+
+def evaluated(bars: pd.DataFrame, target: pd.Series, *args, **kwargs):
+    """Backtest from day WARMUP, so every rule and buy and hold start trading on the same day.
+
+    Signals are still computed from the full history; only the traded period is trimmed.
+    """
+    b = bars.iloc[WARMUP:]
+    return backtest(b, target.reindex(b.index), *args, **kwargs)
+
+
 def cagr_of(value: float, idx: pd.DatetimeIndex, start: float = CAPITAL) -> float:
     return (value / start) ** (365.25 / (idx[-1] - idx[0]).days) - 1
 
@@ -45,8 +61,11 @@ def honesty_steps(bars: pd.DataFrame, target: pd.Series) -> dict[str, float]:
         "+ costs and slippage": (bars, ZERODHA_DELIVERY, None),
         "+ capital-gains tax": (bars, ZERODHA_DELIVERY, INDIA_EQUITY),
     }
-    return {name: cagr_of(backtest(b, target, c, t, CAPITAL, RF).liquidation_after_tax, bars.index)
-            for name, (b, c, t) in layers.items()}
+    out = {}
+    for name, (b, c, t) in layers.items():
+        res = evaluated(b, target, c, t, CAPITAL, RF)
+        out[name] = cagr_of(res.liquidation_after_tax, res.equity.index)
+    return out
 
 
 def report_engine(out_dir: Path) -> dict:
@@ -57,10 +76,8 @@ def report_engine(out_dir: Path) -> dict:
         rows[sym] = honesty_steps(bars, above_ma(bars["close"], 200))
         always = pd.Series(1, index=bars.index)
         hold[sym] = {
-            "free": cagr_of(backtest(bars, always, FREE, None, CAPITAL, RF).liquidation_after_tax,
-                            bars.index),
-            "real": cagr_of(backtest(bars, always, ZERODHA_DELIVERY, INDIA_EQUITY, CAPITAL,
-                                     RF).liquidation_after_tax, bars.index),
+            "free": _cagr_run(evaluated(bars, always, FREE, None, CAPITAL, RF)),
+            "real": _cagr_run(evaluated(bars, always, ZERODHA_DELIVERY, INDIA_EQUITY, CAPITAL, RF)),
         }
     steps = pd.DataFrame(rows).T
     hold = pd.DataFrame(hold).T
@@ -104,7 +121,7 @@ def report_engine(out_dir: Path) -> dict:
     ax.set_title("Trading 4–5 times a year costs the rule 2–3× what buy and hold pays", pad=28)
     plots.save(fig, out_dir, "engine_drag")
 
-    trades = {s: len(backtest(load_bars(s), above_ma(load_bars(s)["close"], 200)).trades)
+    trades = {s: len(evaluated(load_bars(s), above_ma(load_bars(s)["close"], 200)).trades)
               for s in [INDEX] + SYMBOLS}
     return {
         "CAGR by layer (200-day rule)": (steps * 100).round(2).to_dict("index"),
@@ -126,12 +143,12 @@ RULE_COLORS = {"SMA-200 filter": plots.SERIES[0], "EMA-200 filter": plots.SERIES
 
 
 def _rule_stats(bars: pd.DataFrame, target: pd.Series) -> dict:
-    res = backtest(bars, target)
-    years = (bars.index[-1] - bars.index[0]).days / 365.25
+    res = evaluated(bars, target)
+    years = (res.equity.index[-1] - res.equity.index[0]).days / 365.25
     w = res.equity
     t = res.trades
     return {
-        "CAGR": cagr_of(res.liquidation_after_tax, bars.index),
+        "CAGR": _cagr_run(res),
         "trades / yr": len(t) / years,
         "share under 30 days": float((t["days"] < 30).mean()) if len(t) else 0.0,
         "win rate": float((t["return"] > 0).mean()) if len(t) else 1.0,
@@ -233,7 +250,7 @@ def report_trades(out_dir: Path) -> dict:
     for sym in [INDEX] + SYMBOLS:
         bars = load_bars(sym)
         for rule in ("SMA-200 filter", "SMA 50/200 cross"):
-            res = backtest(bars, RULES[rule](bars["close"]))
+            res = evaluated(bars, RULES[rule](bars["close"]))
             st = trade_stats(res.trades)
             g = res.gains
             pos_st, pos_lt = g["short_term"].clip(lower=0).sum(), g["long_term"].clip(lower=0).sum()
@@ -248,7 +265,7 @@ def report_trades(out_dir: Path) -> dict:
     table = pd.DataFrame(rows).T
 
     bars = load_bars(INDEX)
-    t = backtest(bars, RULES["SMA-200 filter"](bars["close"])).trades
+    t = evaluated(bars, RULES["SMA-200 filter"](bars["close"])).trades
     st = trade_stats(t)
     fig, ax = plt.subplots(figsize=(9, 4.6))
     r = t["return"] * 100
@@ -483,9 +500,9 @@ def report_walkforward(out_dir: Path) -> dict:
 
 def _risk_stats(bars: pd.DataFrame, res) -> dict:
     w = res.equity
-    r = res.returns.iloc[max(SLOW):] - RF / 252
+    r = res.returns.iloc[1:] - RF / 252
     yearly = w.resample("YE").last().pct_change().dropna()
-    return {"CAGR": cagr_of(res.liquidation_after_tax, bars.index),
+    return {"CAGR": _cagr_run(res),
             "max drawdown": float((w / w.cummax() - 1).min()),
             "Sharpe": float(r.mean() / r.std() * np.sqrt(252)),
             "worst year": float(yearly.min())}
@@ -493,9 +510,9 @@ def _risk_stats(bars: pd.DataFrame, res) -> dict:
 
 def overlay_compare(bars: pd.DataFrame, rule: str) -> dict:
     """A trend rule vs a fixed mix holding the rule's average exposure (rebalanced at 5% drift)."""
-    res = backtest(bars, RULES[rule](bars["close"]))
-    exposure = float(res.position.iloc[max(SLOW):].mean())
-    mix = backtest(bars, pd.Series(exposure, index=bars.index))
+    res = evaluated(bars, RULES[rule](bars["close"]))
+    exposure = float(res.position.mean())
+    mix = evaluated(bars, pd.Series(exposure, index=bars.index))
     return {"exposure": exposure, "rule": _risk_stats(bars, res), "mix": _risk_stats(bars, mix),
             "rule_result": res, "mix_result": mix}
 
@@ -515,7 +532,7 @@ def report_overlay(out_dir: Path) -> dict:
     table = pd.DataFrame(rows).T
 
     bars = load_bars(INDEX)
-    hold = backtest(bars, pd.Series(1, index=bars.index))
+    hold = evaluated(bars, pd.Series(1, index=bars.index))
     lines = {"SMA-200 filter": (nifty["rule_result"], plots.SERIES[0]),
              f"fixed {nifty['exposure']:.0%} in NIFTY": (nifty["mix_result"], plots.TEXT),
              "buy and hold": (hold, plots.MUTED)}

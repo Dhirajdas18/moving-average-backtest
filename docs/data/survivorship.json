@@ -1,0 +1,39 @@
+{
+ "table": {
+  "point-in-time | buy and hold": {
+   "CAGR": 0.09453084643934351,
+   "max drawdown": -0.5111811423815168,
+   "Sharpe": 0.23995096887280706
+  },
+  "point-in-time | 200-day filter": {
+   "CAGR": 0.09527827950686252,
+   "max drawdown": -0.15216730607269602,
+   "Sharpe": 0.31439924610799375
+  },
+  "today's list | buy and hold": {
+   "CAGR": 0.2832456020703895,
+   "max drawdown": -0.4161858513491651,
+   "Sharpe": 1.1242719567705524
+  },
+  "today's list | 200-day filter": {
+   "CAGR": 0.23827434302360495,
+   "max drawdown": -0.12305284504484304,
+   "Sharpe": 1.319201761022391
+  },
+  "point-in-time | fixed 58% mix": {
+   "CAGR": 0.08694656947744273,
+   "max drawdown": -0.2904669087978181,
+   "Sharpe": 0.2399509688728073
+  }
+ },
+ "exposure of filter": 0.5782367758186399,
+ "\u20b91 grows to (buy and hold)": {
+  "today's list": 24.9,
+  "point-in-time": 3.2
+ },
+ "members dropped": 29,
+ "dropped and lost over half": 7,
+ "today's-list members trading in 2014": 37,
+ "start": "2014-01-01",
+ "end": "2026-11-20"
+}
