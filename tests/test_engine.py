@@ -85,3 +85,33 @@ def test_after_tax_liquidation_value_taxes_unrealised_gains_at_the_end():
     bars = pd.DataFrame({"open": px, "close": px}, index=idx)
     out = backtest(bars, pd.Series(1, index=idx), FREE, INDIA_EQUITY, 1_000_000, 0.0)
     assert out.liquidation_after_tax < out.equity.iloc[-1]
+
+
+def test_fractional_target_invests_that_share_of_equity():
+    bars = _bars([100, 100, 200], [100, 100, 200])
+    out = backtest(bars, pd.Series(0.5, index=bars.index), FREE, None, 1000, 0.0,
+                   rebalance_band=1.0)  # never rebalance after the first buy
+    assert out.position.iloc[1] == pytest.approx(0.5)
+    assert out.equity.iloc[-1] == pytest.approx(500 * 2 + 500)
+
+
+def test_drift_beyond_the_band_rebalances_back_to_target():
+    bars = _bars([100, 100, 100, 200], [100, 100, 200, 200])  # doubles during day 2
+    out = backtest(bars, pd.Series(0.5, index=bars.index), FREE, None, 1000, 0.0,
+                   rebalance_band=0.05)
+    # after the doubling the weight is 2/3 at the close; the next open trades back to 1/2
+    assert out.position.iloc[2] == pytest.approx(2 / 3)
+    assert out.position.iloc[3] == pytest.approx(0.5)
+
+
+def test_partial_sells_use_the_oldest_lot_first_for_long_term_status():
+    idx = pd.bdate_range("2022-01-03", "2023-06-30")
+    px = np.where(idx < pd.Timestamp("2022-06-01"), 100.0, 200.0)
+    bars = pd.DataFrame({"open": px, "close": px}, index=idx)
+    t = pd.Series(1.0, index=idx)
+    t[idx >= pd.Timestamp("2023-02-01")] = 0.5  # trim after more than a year: long-term
+    out = backtest(bars, t, FREE, INDIA_EQUITY, 1_000_000, 0.0, rebalance_band=0.05)
+    g = out.gains.loc[2022]  # FY 2022-23 (Feb 2023)
+    assert g["short_term"] == pytest.approx(0.0)
+    # half of the 2,000,000 position sold at 200 from shares bought at 100
+    assert g["long_term"] == pytest.approx((200 - 100) * 1_000_000 / 200, rel=1e-6)

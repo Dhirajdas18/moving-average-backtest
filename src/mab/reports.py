@@ -481,5 +481,83 @@ def report_walkforward(out_dir: Path) -> dict:
     }
 
 
+def _risk_stats(bars: pd.DataFrame, res) -> dict:
+    w = res.equity
+    r = res.returns.iloc[max(SLOW):] - RF / 252
+    yearly = w.resample("YE").last().pct_change().dropna()
+    return {"CAGR": cagr_of(res.liquidation_after_tax, bars.index),
+            "max drawdown": float((w / w.cummax() - 1).min()),
+            "Sharpe": float(r.mean() / r.std() * np.sqrt(252)),
+            "worst year": float(yearly.min())}
+
+
+def overlay_compare(bars: pd.DataFrame, rule: str) -> dict:
+    """A trend rule vs a fixed mix holding the rule's average exposure (rebalanced at 5% drift)."""
+    res = backtest(bars, RULES[rule](bars["close"]))
+    exposure = float(res.position.iloc[max(SLOW):].mean())
+    mix = backtest(bars, pd.Series(exposure, index=bars.index))
+    return {"exposure": exposure, "rule": _risk_stats(bars, res), "mix": _risk_stats(bars, mix),
+            "rule_result": res, "mix_result": mix}
+
+
+def report_overlay(out_dir: Path) -> dict:
+    """Is a trend filter good risk control? Judged against the same exposure, held steadily."""
+    rules = ("SMA-200 filter", "EMA 50/200 cross")
+    rows = {}
+    for sym in [INDEX] + SYMBOLS:
+        bars = load_bars(sym)
+        for rule in rules:
+            c = overlay_compare(bars, rule)
+            rows[(sym, rule)] = {"exposure": c["exposure"]} | {
+                f"{side} {k}": v for side in ("rule", "mix") for k, v in c[side].items()}
+            if sym == INDEX and rule == "SMA-200 filter":
+                nifty = c
+    table = pd.DataFrame(rows).T
+
+    bars = load_bars(INDEX)
+    hold = backtest(bars, pd.Series(1, index=bars.index))
+    lines = {"SMA-200 filter": (nifty["rule_result"], plots.SERIES[0]),
+             f"fixed {nifty['exposure']:.0%} in NIFTY": (nifty["mix_result"], plots.TEXT),
+             "buy and hold": (hold, plots.MUTED)}
+    fig, (ax, ax2) = plt.subplots(2, 1, figsize=(9, 5.4), sharex=True,
+                                  gridspec_kw={"height_ratios": [2, 1]})
+    curves = {}
+    for name, (res, color) in lines.items():
+        w = res.equity / 1e5
+        ax.plot(w.index, w, color=color, lw=2 if "filter" in name else 1.6)
+        curves[name] = w
+        ax2.plot(w.index, (w / w.cummax() - 1) * 100, color=color, lw=1.2)
+    _label_ends(ax, curves, {k: v[1] for k, v in lines.items()})
+    ax.set_ylabel("₹ lakh, after costs and tax")
+    ax2.set_ylabel("drawdown, %")
+    ax.set_title(f"NIFTY: holding {nifty['exposure']:.0%} steadily beat timing it with the 200-day "
+                 "filter")
+    plots.save(fig, out_dir, "overlay_nifty")
+
+    labels = [f"{s} · {'filter' if 'filter' in r else 'cross'}" for s, r in table.index]
+    fig, axes = plt.subplots(1, 2, figsize=(9, 5.2), sharey=True)
+    y = np.arange(len(table))
+    for ax, key, title, scale in ((axes[0], "CAGR", "growth, % a year", 100),
+                                  (axes[1], "max drawdown", "worst drawdown, %", 100)):
+        a, b = table[f"rule {key}"] * scale, table[f"mix {key}"] * scale
+        for i in range(len(table)):
+            ax.plot([a.iloc[i], b.iloc[i]], [i, i], color=plots.GRID, lw=3, zorder=1)
+        ax.scatter(a, y, color=plots.SERIES[0], s=45, zorder=3, label="trend rule")
+        ax.scatter(b, y, color=plots.TEXT, s=45, zorder=3, label="fixed mix, same exposure")
+        ax.set_title(title, fontsize=10, fontweight="normal", color=plots.TEXT_2)
+        ax.grid(axis="y", visible=False)
+    axes[0].set_yticks(y, labels, fontsize=8)
+    axes[0].invert_yaxis()
+    axes[0].legend(loc="lower left", bbox_to_anchor=(0, 1.06), ncol=2)
+    fig.suptitle("Same exposure, held steadily: more growth, and drawdowns just as small", x=0.06,
+                 ha="left", fontsize=13, fontweight="semibold", color=plots.TEXT, y=1.03)
+    plots.save(fig, out_dir, "overlay_compare")
+
+    wins = {k: int((table[f"rule {k}"] > table[f"mix {k}"]).sum())
+            for k in ("CAGR", "Sharpe", "max drawdown", "worst year")}
+    return {"rule better than same-exposure mix (of 12)": wins,
+            "table": table.astype(float).round(3).to_dict("index")}
+
+
 REPORTS = {"engine": report_engine, "rules": report_rules, "trades": report_trades,
-           "sweep": report_sweep, "walkforward": report_walkforward}
+           "sweep": report_sweep, "walkforward": report_walkforward, "overlay": report_overlay}

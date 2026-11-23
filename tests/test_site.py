@@ -4,6 +4,7 @@ import pandas as pd
 from mab.site import (
     build_html,
     engine_figure,
+    overlay_figure,
     rules_figure,
     sweep_section,
     trades_table,
@@ -61,3 +62,8 @@ def test_walkforward_figure_four_lines_per_symbol():
     fig = walkforward_figure({"NIFTY": pd.DataFrame({"open": c, "close": c}, index=idx)})
     assert [t.name for t in fig.data] == ["walk-forward", "best pair in hindsight",
                                           "fixed 50/200 cross", "buy and hold"]
+
+
+def test_overlay_figure_three_lines_per_symbol():
+    fig = overlay_figure({"NIFTY": _bars(0)})
+    assert len(fig.data) == 3 and fig.data[0].name == "SMA-200 filter"

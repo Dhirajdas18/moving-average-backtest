@@ -12,13 +12,14 @@ rebuilt weekly from fresh data by GitHub Actions.
 
 ## Features
 
-- [x] Rupee-accurate engine: next-open fills, Zerodha delivery charges, slippage, cash interest, STCG/LTCG
-  tax with loss set-off and carry-forward, after-tax liquidation value
+- [x] Rupee-accurate engine: next-open fills, fractional target weights with a rebalancing band, FIFO tax
+  lots, Zerodha delivery charges, slippage, cash interest, STCG/LTCG tax with loss set-off and
+  carry-forward, after-tax liquidation value
 - [x] SMA vs EMA; price filter vs fast/slow crossover
 - [x] Trade statistics: win rate, payoff, break-even win rate, holding periods, profit concentration
 - [x] Parameter sweep, deflated Sharpe ratio, probability of backtest overfitting (interactive heatmap)
 - [x] Walk-forward optimisation
-- [ ] Trend filter vs a same-exposure fixed mix
+- [x] Trend filter vs a same-exposure fixed mix (FIFO tax lots, rebalancing band)
 - [ ] Survivorship bias
 
 ## Findings
@@ -143,6 +144,28 @@ repeats. Every approach below is measured over the same test years, 2018–2026,
 
 <a href="docs/img/wf_cagr.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/wf_cagr.png"><img src="docs/img/wf_cagr.gif" alt="Growth 2018-2026 by approach for six NSE series" width="720"></picture></a>
 
+### 6. As risk control, a trend filter lost to simply holding less
+
+<table><tr>
+<td><a href="docs/img/overlay_nifty.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/overlay_nifty.png"><img src="docs/img/overlay_nifty.gif" alt="NIFTY: 200-day filter vs a fixed 74% mix vs buy and hold, with drawdowns"></picture></a></td>
+<td><a href="docs/img/overlay_compare.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/overlay_compare.png"><img src="docs/img/overlay_compare.gif" alt="Growth and worst drawdown: trend rule vs same-exposure fixed mix, 12 cases"></picture></a></td>
+</tr></table>
+
+Section 2 found the rules cut the worst drawdown (33–38% against 47% for buy and hold). But they were only
+invested 57–81% of the time, and holding less stock lowers risk by itself. The fair test is a fixed mix
+holding the rule's average exposure steadily (rebalanced when it drifts 5%, with FIFO tax lots), after the
+same costs and tax, so any difference comes from timing alone. Two rules × six series = 12 cases.
+
+- **Growth:** the fixed mix kept more in 11 of 12 cases (NIFTY: 9.7% a year at a steady 74% against 6.8% for
+  the 200-day filter). The one exception was ITC's EMA 50/200 cross.
+- **Risk:** the rule had the smaller worst drawdown in only 6 of 12 cases, a coin flip, and the better worst
+  calendar year in 2 of 12. Whipsaw years (2015–16, 2018) hurt the rules more than steady holding did.
+- **Sharpe ratio:** better for the rule in 2 of 12 cases.
+- On NIFTY the filter spent years in shallow drawdowns (2015–17, 2022–23) while the steady mix recovered.
+  The drawdown benefit seen earlier came from holding less, not from the timing. This matches what a
+  volatility-target overlay showed in the
+  [returns-volatility study](https://github.com/Dhirajdas18/returns-volatility-dashboard).
+
 ## Assumptions
 
 Capital ₹10 lakh. Zerodha delivery charges as of Nov 2026 ([zerodha.com/charges](https://zerodha.com/charges)):
@@ -158,14 +181,14 @@ advice.
 uv sync
 uv run python scripts/fetch_data.py          # Yahoo Finance -> data/prices.parquet
 uv run mab run --symbol NIFTY --window 200   # one rule, after costs and tax
-uv run mab report engine                     # also: rules trades sweep walkforward
+uv run mab report engine                     # also: rules trades sweep walkforward overlay
 uv run python scripts/build_site.py          # dashboard -> site/index.html
 uv run pytest
 ```
 
 ## Design
 
-- `src/mab/engine.py`: the backtest loop, in rupees, one long-or-flat position.
+- `src/mab/engine.py`: the backtest loop in rupees: target weights, rebalancing band, FIFO tax lots.
 - `src/mab/costs.py`, `src/mab/tax.py`: charges per order; Indian capital-gains tax per financial year.
 - `src/mab/signals.py`: moving averages and the rules built on them.
 - `src/mab/stats.py`: trade statistics and profit concentration.

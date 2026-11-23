@@ -253,6 +253,31 @@ def walkforward_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure | s
     return fig
 
 
+def overlay_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure:
+    """SMA-200 filter vs a fixed mix at the filter's average exposure vs buy and hold."""
+    from mab.reports import overlay_compare
+
+    fig = go.Figure()
+    symbols = list(bars_by_symbol)
+    for i, sym in enumerate(symbols):
+        bars = bars_by_symbol[sym]
+        c = overlay_compare(bars, "SMA-200 filter")
+        hold = backtest(bars, pd.Series(1, index=bars.index), ZERODHA_DELIVERY, INDIA_EQUITY,
+                        CAPITAL, RF)
+        for name, res, color in (("SMA-200 filter", c["rule_result"], plots.SERIES[0]),
+                                 (f"fixed {c['exposure']:.0%} invested", c["mix_result"],
+                                  plots.TEXT),
+                                 ("buy and hold", hold, plots.MUTED)):
+            w = res.equity / 1e5
+            fig.add_scatter(x=list(w.index.strftime("%Y-%m-%d")), y=w.round(2).tolist(),
+                            name=name, visible=i == 0, line=dict(color=color, width=2),
+                            hovertemplate="₹%{y:.2f} lakh")
+    _symbol_dropdown(fig, symbols, 3)
+    fig = _layout(fig, "₹ lakh (started with 10), after costs and tax paid so far")
+    fig.update_xaxes(range=None)
+    return fig
+
+
 SECTIONS = [
     ("Realistic backtest",
      "Signal at each close, trade at the next open, Zerodha delivery charges and 0.05% slippage on "
@@ -283,6 +308,11 @@ SECTIONS = [
      "\u2018use the best setting\u2019 process would really have earned, next to the best pair "
      "picked with hindsight, a fixed 50/200 cross and buy and hold, all from 2018.",
      walkforward_figure),
+    ("Trend filter as risk control",
+     "Holding less stock lowers risk by itself, so the fair test of a trend filter is a fixed mix "
+     "that holds the filter's average exposure steadily (rebalanced when it drifts 5%), after the "
+     "same costs and tax. Any difference then comes from the timing alone.",
+     overlay_figure),
 ]
 
 REPO = "https://github.com/Dhirajdas18/moving-average-backtest"
