@@ -12,7 +12,7 @@ from mab import plots
 from mab.costs import ZERODHA_DELIVERY
 from mab.data import INDEX, SYMBOLS, load_bars
 from mab.engine import backtest
-from mab.signals import above_ma
+from mab.signals import above_ma, crossover
 from mab.tax import INDIA_EQUITY
 
 FONT = "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
@@ -93,6 +93,33 @@ def engine_figure(bars_by_symbol: dict[str, pd.DataFrame], window: int = 200) ->
     return fig
 
 
+RULES = {
+    "SMA-200 filter": (lambda c: above_ma(c, 200), plots.SERIES[0]),
+    "EMA-200 filter": (lambda c: above_ma(c, 200, "ema"), plots.SERIES[1]),
+    "SMA 50/200 cross": (lambda c: crossover(c, 50, 200), plots.SERIES[2]),
+    "EMA 50/200 cross": (lambda c: crossover(c, 50, 200, "ema"), plots.SERIES[6]),
+}
+
+
+def rules_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure:
+    """Four textbook moving-average rules vs buy and hold, after costs and tax."""
+    fig = go.Figure()
+    symbols = list(bars_by_symbol)
+    for i, sym in enumerate(symbols):
+        bars = bars_by_symbol[sym]
+        lines = {name: (make(bars["close"]), color) for name, (make, color) in RULES.items()}
+        lines["buy and hold"] = (pd.Series(1, index=bars.index), plots.TEXT)
+        for name, (target, color) in lines.items():
+            w = backtest(bars, target, ZERODHA_DELIVERY, INDIA_EQUITY, CAPITAL, RF).equity / 1e5
+            fig.add_scatter(x=list(w.index.strftime("%Y-%m-%d")), y=w.round(2).tolist(),
+                            name=name, visible=i == 0, line=dict(color=color, width=2),
+                            hovertemplate="₹%{y:.2f} lakh")
+    _symbol_dropdown(fig, symbols, len(RULES) + 1)
+    fig = _layout(fig, "₹ lakh (started with 10), after costs and tax paid so far")
+    fig.update_xaxes(range=None)
+    return fig
+
+
 SECTIONS = [
     ("Realistic backtest",
      "Signal at each close, trade at the next open, Zerodha delivery charges and 0.05% slippage on "
@@ -100,6 +127,12 @@ SECTIONS = [
      "12.5% long-term above ₹1.25 lakh, plus 4% cess). The rule holds while the price is above its "
      "200-day average.",
      engine_figure),
+    ("Rule styles",
+     "A price filter (hold while the close is above its 200-day average) against a 50/200 "
+     "crossover (hold while the 50-day average is above the 200-day), each with a simple (SMA) "
+     "or exponential (EMA) average. Filters trade about four times a year and most of their "
+     "trades reverse within a month; crossovers trade under once a year but exit late.",
+     rules_figure),
 ]
 
 REPO = "https://github.com/Dhirajdas18/moving-average-backtest"

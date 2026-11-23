@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from mab.site import build_html, engine_figure
+from mab.site import build_html, engine_figure, rules_figure
 
 
 def _bars(seed):
@@ -22,3 +22,9 @@ def test_build_html_page_with_nav_and_one_plotly_load():
     assert html.startswith("<!doctype html>")
     assert html.count('src="https://cdn.plot.ly') == 1
     assert 'href="#realistic-backtest"' in html and 'id="realistic-backtest"' in html
+
+
+def test_rules_figure_five_lines_per_symbol():
+    fig = rules_figure({"NIFTY": _bars(0), "ITC": _bars(1)})
+    assert len(fig.data) == 10
+    assert fig.data[4].name == "buy and hold"

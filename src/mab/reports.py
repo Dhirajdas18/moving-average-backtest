@@ -10,7 +10,7 @@ from mab import plots
 from mab.costs import ZERODHA_DELIVERY, CostModel
 from mab.data import INDEX, SYMBOLS, load_bars
 from mab.engine import backtest
-from mab.signals import above_ma
+from mab.signals import above_ma, crossover, sma
 from mab.tax import INDIA_EQUITY
 
 CAPITAL = 1_000_000.0
@@ -100,4 +100,117 @@ def report_engine(out_dir: Path) -> dict:
     }
 
 
-REPORTS = {"engine": report_engine}
+RULES = {
+    "SMA-200 filter": lambda c: above_ma(c, 200),
+    "EMA-200 filter": lambda c: above_ma(c, 200, "ema"),
+    "SMA 50/200 cross": lambda c: crossover(c, 50, 200),
+    "EMA 50/200 cross": lambda c: crossover(c, 50, 200, "ema"),
+}
+RULE_COLORS = {"SMA-200 filter": plots.SERIES[0], "EMA-200 filter": plots.SERIES[1],
+               "SMA 50/200 cross": plots.SERIES[2], "EMA 50/200 cross": plots.SERIES[6],
+               "buy and hold": plots.TEXT}
+
+
+def _rule_stats(bars: pd.DataFrame, target: pd.Series) -> dict:
+    res = backtest(bars, target)
+    years = (bars.index[-1] - bars.index[0]).days / 365.25
+    w = res.equity
+    t = res.trades
+    return {
+        "CAGR": cagr_of(res.liquidation_after_tax, bars.index),
+        "trades / yr": len(t) / years,
+        "share under 30 days": float((t["days"] < 30).mean()) if len(t) else 0.0,
+        "win rate": float((t["return"] > 0).mean()) if len(t) else 1.0,
+        "max drawdown": float((w / w.cummax() - 1).min()),
+        "time invested": float(res.position.gt(0).mean()),
+    }
+
+
+def report_rules(out_dir: Path) -> dict:
+    """SMA vs EMA, price filter vs 50/200 crossover, at textbook settings (not tuned)."""
+    rows = []
+    for sym in [INDEX] + SYMBOLS:
+        bars = load_bars(sym)
+        for name, make in RULES.items():
+            rows.append({"symbol": sym, "rule": name} | _rule_stats(bars, make(bars["close"])))
+        rows.append({"symbol": sym, "rule": "buy and hold"}
+                    | _rule_stats(bars, pd.Series(1, index=bars.index)))
+    df = pd.DataFrame(rows)
+    cagr = df.pivot(index="symbol", columns="rule", values="CAGR").reindex([INDEX] + SYMBOLS)
+    avg = df.groupby("rule").mean(numeric_only=True).reindex(list(RULE_COLORS))
+
+    c = load_bars(INDEX)["close"]
+    span = c["2019-10-01":"2020-10-31"]
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    ax.plot(span.index, span, color=plots.TEXT, lw=1.6, label="NIFTY")
+    for name, series, color in (("200-day SMA", sma(c, 200), plots.SERIES[0]),
+                                ("50-day SMA", sma(c, 50), plots.SERIES[2])):
+        ax.plot(span.index, series[span.index], color=color, lw=1.4, label=name)
+    peak = c["2020-01-01":"2020-03-31"].idxmax()
+    bottom = c["2020-02-01":"2020-06-30"].idxmin()
+    lag = {}
+    for name, marker in (("SMA-200 filter", "o"), ("SMA 50/200 cross", "s")):
+        ch = RULES[name](c).diff()
+        out = ch[(ch < 0) & (ch.index >= peak - pd.Timedelta(days=60))].index[0]
+        back = ch[(ch > 0) & (ch.index > bottom)].index[0]
+        lag[name] = {"exit": f"{out:%Y-%m-%d} ({c[out] / c[peak] - 1:+.0%} from peak)",
+                     "re-entry": f"{back:%Y-%m-%d} ({c[back] / c[bottom] - 1:+.0%} from bottom)"}
+        for day, verb in ((out, "sell"), (back, "buy")):
+            ax.scatter(day, c[day], marker=marker, s=60, zorder=4, color=RULE_COLORS[name],
+                       edgecolor=plots.SURFACE, linewidth=1.5)
+            ax.annotate(f"{name.split()[1] if 'cross' in name else 'filter'} {verb}",
+                        (day, c[day]), xytext=(6, -14 if verb == "sell" else 8),
+                        textcoords="offset points", fontsize=8, color=plots.TEXT_2)
+    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter("%b %Y"))
+    ax.legend(loc="lower right")
+    ax.set_title("2020: the filter sold early; the 50/200 cross sold four days before the bottom")
+    plots.save(fig, out_dir, "rules_2020")
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    y = np.arange(len(cagr))
+    for rule in RULE_COLORS:
+        ax.scatter(cagr[rule] * 100, y, s=70 if rule != "buy and hold" else 90,
+                   color=RULE_COLORS[rule], marker="D" if rule == "buy and hold" else "o",
+                   label=rule, zorder=3, edgecolor=plots.SURFACE, linewidth=1.2)
+    ax.set_yticks(y, cagr.index)
+    ax.invert_yaxis()
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel("growth, % a year after costs and tax (2013–2026)")
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3, fontsize=8)
+    ax.set_title("Buy and hold won on 5 of 6 series; no rule style won consistently", pad=40)
+    plots.save(fig, out_dir, "rules_cagr")
+
+    fig, axes = plt.subplots(1, 2, figsize=(9, 4.6))
+    names = list(RULES)
+    panels = ((axes[0], "trades / yr", "round trips a year", 1),
+              (axes[1], "share under 30 days", "trades lasting under 30 days, %", 100))
+    for ax, col, title, scale in panels:
+        vals = avg.loc[names, col] * scale
+        ax.barh(names, vals, color=[RULE_COLORS[n] for n in names], height=0.6)
+        for i, v in enumerate(vals):
+            ax.text(v, i, f" {v:.1f}" if scale == 1 else f" {v:.0f}%", va="center", fontsize=9,
+                    color=plots.TEXT_2)
+        ax.set_title(title, fontsize=10, fontweight="normal", color=plots.TEXT_2)
+        ax.grid(axis="y", visible=False)
+        ax.invert_yaxis()
+    axes[1].set_yticks([])
+    fig.suptitle("Price filters whipsaw: most of their trades reverse within a month", x=0.06,
+                 ha="left", fontsize=13, fontweight="semibold", color=plots.TEXT)
+    plots.save(fig, out_dir, "rules_whipsaw")
+
+    beats = {
+        "EMA > SMA (filter)": int((cagr["EMA-200 filter"] > cagr["SMA-200 filter"]).sum()),
+        "EMA > SMA (cross)": int((cagr["EMA 50/200 cross"] > cagr["SMA 50/200 cross"]).sum()),
+        "cross > filter (SMA)": int((cagr["SMA 50/200 cross"] > cagr["SMA-200 filter"]).sum()),
+        "cross > filter (EMA)": int((cagr["EMA 50/200 cross"] > cagr["EMA-200 filter"]).sum()),
+        "any rule > buy and hold": int((cagr[names].max(axis=1) > cagr["buy and hold"]).sum()),
+    }
+    return {
+        "CAGR after costs and tax": (cagr * 100).round(2).to_dict("index"),
+        "averages across six series": avg.round(3).to_dict("index"),
+        "series won (of 6)": beats,
+        "NIFTY 2020": lag,
+    }
+
+
+REPORTS = {"engine": report_engine, "rules": report_rules}
