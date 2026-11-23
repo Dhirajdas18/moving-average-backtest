@@ -278,6 +278,31 @@ def overlay_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure:
     return fig
 
 
+SURVIVORSHIP_JSON = Path(__file__).resolve().parents[2] / "docs" / "data" / "survivorship.json"
+
+
+def survivorship_table(_bars_by_symbol: dict[str, pd.DataFrame]) -> str:
+    """Aggregate survivorship results written by `mab report survivorship` (local NSE data)."""
+    if not SURVIVORSHIP_JSON.exists():
+        return "<p>Run <code>mab report survivorship</code> with a local NSE data folder.</p>"
+    d = json.loads(SURVIVORSHIP_JSON.read_text())
+    rows = []
+    for key, v in d["table"].items():
+        universe, strategy = key.split(" | ")
+        nums = (f"<td>{v['CAGR']:.1%}</td><td>{v['max drawdown']:.0%}</td>"
+                f"<td>{v['Sharpe']:.2f}</td>").replace("-", "\u2212")
+        rows.append(f'<tr><th scope="row">{universe}</th>'
+                    f'<td class="text">{strategy}</td>{nums}</tr>')
+    head = ("<th scope=\"col\"></th><th scope=\"col\"><span class=\"text\">Strategy</span></th>"
+            "<th scope=\"col\">Growth a year</th><th scope=\"col\">Worst drawdown</th>"
+            "<th scope=\"col\">Sharpe</th>")
+    note = (f"<p>{d['start']} to {d['end']}, after costs, before tax. "
+            f"{d['members dropped']} of the {d['start'][:4]} top 50 are not in today's list; "
+            f"{d['dropped and lost over half']} of them lost more than half their value.</p>")
+    return (f'<div class="table-scroll"><table class="data"><thead><tr>{head}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table></div>{note}')
+
+
 SECTIONS = [
     ("Realistic backtest",
      "Signal at each close, trade at the next open, Zerodha delivery charges and 0.05% slippage on "
@@ -313,6 +338,11 @@ SECTIONS = [
      "that holds the filter's average exposure steadily (rebalanced when it drifts 5%), after the "
      "same costs and tax. Any difference then comes from the timing alone.",
      overlay_figure),
+    ("Survivorship bias",
+     "Testing on today's 50 most-traded NSE stocks quietly drops every company that fell out of "
+     "the top 50, including the ones that collapsed. The honest version uses the 50 most-traded "
+     "stocks as known at each January, from NSE's daily files, including later delistings.",
+     survivorship_table),
 ]
 
 REPO = "https://github.com/Dhirajdas18/moving-average-backtest"

@@ -559,5 +559,96 @@ def report_overlay(out_dir: Path) -> dict:
             "table": table.astype(float).round(3).to_dict("index")}
 
 
+SURVIVORSHIP_JSON = Path("docs/data/survivorship.json")
+
+
+def report_survivorship(out_dir: Path) -> dict:
+    """Point-in-time 50 most-traded stocks vs today's 50 applied to the past (MAB_LAKE_DIR)."""
+    import json
+
+    from mab.universe import load_lake, members_at, portfolio_returns
+
+    prices, turnover = load_lake()
+    days = prices.index
+    rebal = [days[days.year == y][0] for y in sorted(set(days.year[days >= "2014-01-01"]))]
+    pit = {d: members_at(turnover, d, 50) for d in rebal}
+    today = members_at(turnover, days[-1], 50)
+    surv = {d: [s for s in today if not np.isnan(prices.loc[d, s])] for d in rebal}
+    signal = (prices > prices.rolling(200, min_periods=200).mean()).astype(int)
+    p, sig = prices.loc[rebal[0]:], signal.loc[rebal[0]:]
+
+    def stats(r):
+        w = (1 + r).cumprod()
+        x = r - RF / 252
+        return {"CAGR": float(w.iloc[-1] ** (365.25 / (r.index[-1] - r.index[0]).days) - 1),
+                "max drawdown": float((w / w.cummax() - 1).min()),
+                "Sharpe": float(x.mean() / x.std() * np.sqrt(252))}
+
+    runs = {(u, s): portfolio_returns(p, members, signal=sg)
+            for u, members in (("point-in-time", pit), ("today's list", surv))
+            for s, sg in (("buy and hold", None), ("200-day filter", sig))}
+    frac = []
+    for i, d in enumerate(p.index[1:], start=1):
+        reb = max(x for x in rebal if x <= d)
+        m = [s for s in pit[reb] if s in sig.columns]
+        frac.append(float(sig.iloc[i - 1][m].mean()))
+    exposure = float(np.mean(frac))
+    runs[("point-in-time", f"fixed {exposure:.0%} mix")] = (
+        exposure * runs[("point-in-time", "buy and hold")] + (1 - exposure) * RF / 252)
+    table = {f"{u} | {s}": stats(r) for (u, s), r in runs.items()}
+
+    colors = {("today's list", "buy and hold"): plots.MUTED,
+              ("today's list", "200-day filter"): plots.SERIES[1],
+              ("point-in-time", "buy and hold"): plots.TEXT,
+              ("point-in-time", "200-day filter"): plots.SERIES[0]}
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    curves, cmap = {}, {}
+    for key, color in colors.items():
+        w = (1 + runs[key]).cumprod()
+        name = f"{key[0]}: {key[1]}"
+        ax.plot(w.index, w, color=color, lw=2 if key[0] == "point-in-time" else 1.6)
+        curves[name], cmap[name] = w, color
+    _label_ends(ax, curves, cmap, gap=0.9)
+    ax.set_yscale("log")
+    ax.set_ylabel("growth of ₹1 (log scale), after costs, before tax")
+    end_surv = curves["today's list: buy and hold"].iloc[-1]
+    end_pit = curves["point-in-time: buy and hold"].iloc[-1]
+    ax.set_title(f"Buy and hold: today's list turns ₹1 into ₹{end_surv:.0f}; "
+                 f"the honest universe into ₹{end_pit:.1f}")
+    plots.save(fig, out_dir, "survivorship_growth")
+
+    first = rebal[0]
+    gone = [s for s in pit[first] if s not in today]
+    total = {}
+    for s in gone:
+        x = prices[s].loc[first:].dropna()
+        total[s] = float(x.iloc[-1] / x.iloc[0] - 1)
+    tot = pd.Series(total).sort_values()
+    fig, ax = plt.subplots(figsize=(9, 5.4))
+    colors_b = [plots.SERIES[7] if v < -0.5 else plots.MUTED for v in tot]
+    ax.barh(tot.index, tot * 100, color=colors_b, height=0.7)
+    ax.axvline(0, color=plots.TEXT_2, lw=0.8)
+    ax.set_xscale("symlog", linthresh=100)
+    ax.tick_params(axis="y", labelsize=7)
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel(f"total return from {first:%b %Y} to the last trade, % (symmetric log scale)")
+    ax.set_title(f"{len(gone)} of the 2014 top 50 aren't in today's list; red = lost over half")
+    plots.save(fig, out_dir, "survivorship_gone")
+
+    out = {"table": table, "exposure of filter": exposure,
+           "₹1 grows to (buy and hold)": {"today's list": round(float(end_surv), 1),
+                                         "point-in-time": round(float(end_pit), 2)},
+           "members dropped": len(gone),
+           "dropped and lost over half": int((tot < -0.5).sum()),
+           "worst dropped": tot.head(8).round(3).to_dict(),
+           "today's-list members trading in 2014": len(surv[first])}
+    SURVIVORSHIP_JSON.parent.mkdir(parents=True, exist_ok=True)
+    SURVIVORSHIP_JSON.write_text(json.dumps({k: v for k, v in out.items() if k != "worst dropped"}
+                                            | {"start": f"{first:%Y-%m-%d}",
+                                               "end": f"{days[-1]:%Y-%m-%d}"}, indent=1))
+    return out
+
+
 REPORTS = {"engine": report_engine, "rules": report_rules, "trades": report_trades,
-           "sweep": report_sweep, "walkforward": report_walkforward, "overlay": report_overlay}
+           "sweep": report_sweep, "walkforward": report_walkforward, "overlay": report_overlay,
+           "survivorship": report_survivorship}

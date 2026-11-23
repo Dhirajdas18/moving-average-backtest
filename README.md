@@ -20,7 +20,7 @@ rebuilt weekly from fresh data by GitHub Actions.
 - [x] Parameter sweep, deflated Sharpe ratio, probability of backtest overfitting (interactive heatmap)
 - [x] Walk-forward optimisation
 - [x] Trend filter vs a same-exposure fixed mix (FIFO tax lots, rebalancing band)
-- [ ] Survivorship bias
+- [x] Survivorship bias, on a point-in-time universe from NSE daily files
 
 ## Findings
 
@@ -166,6 +166,37 @@ same costs and tax, so any difference comes from timing alone. Two rules × six 
   volatility-target overlay showed in the
   [returns-volatility study](https://github.com/Dhirajdas18/returns-volatility-dashboard).
 
+### 7. Testing on today's stock list overstated buy and hold by 18 points a year
+
+<table><tr>
+<td><a href="docs/img/survivorship_growth.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/survivorship_growth.png"><img src="docs/img/survivorship_growth.gif" alt="Growth of 1 rupee: today's 50 most-traded stocks vs the point-in-time top 50, buy and hold and 200-day filter"></picture></a></td>
+<td><a href="docs/img/survivorship_gone.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/survivorship_gone.png"><img src="docs/img/survivorship_gone.gif" alt="Total return of the 2014 top-50 stocks that are not in today's list"></picture></a></td>
+</tr></table>
+
+Every section above used today's tickers, and so does most free data: Yahoo only lists companies that
+still trade. To measure the damage, this section uses NSE's daily bhavcopy files, which include every stock
+that traded, delistings included. Universe: the 50 most-traded NSE stocks (median daily turnover over the
+previous six months), re-chosen each January from 2014 (**point-in-time**), against today's 50 most-traded
+stocks applied to the whole history (**today's list**). Equal weight, rebalanced yearly, after costs, before
+tax.
+
+- **Buy and hold:** today's list turned ₹1 into ₹23 (27.6% a year). The honest point-in-time universe turned
+  it into ₹3.4 (9.9% a year). Choosing stocks by today's list quietly picks the ones that went on to grow,
+  since turnover rises with price, and that adds about 18 points a year.
+- **29 of the 2014 top 50 aren't in today's list.** Most simply lost turnover rank, but seven lost more
+  than half their value: RCOM (−100%), Reliance Capital and Jaiprakash Associates (−97%), Reliance
+  Infrastructure (−87%), YES Bank (−84%), Zee (−82%) and Reliance Power (−76%). A today's-list backtest
+  never holds them.
+- **The 200-day filter was overstated too,** by 13 points a year (23.2% vs 9.9%).
+- **A lead, not a finding:** on the honest universe, the per-stock 200-day filter matched buy and hold's
+  growth (9.9%) with a much smaller worst drawdown (−15% vs −51%), and beat a fixed mix with the same 58%
+  average exposure (9.0% a year, −29% drawdown). Across 50 stocks each filter stepped aside from its own
+  collapse, which a single-stock test (section 6) can't show. But it is one period, before tax (a filter
+  trading 50 stocks would realise many short-term gains), with simplified costs and close-to-close fills,
+  so it needs the full engine and a walk-forward test before it means anything.
+- Reproduce with `MAB_LAKE_DIR=<folder with panel.parquet> uv run mab report survivorship`. The NSE data
+  isn't committed; only the aggregate results (`docs/data/survivorship.json`) are.
+
 ## Assumptions
 
 Capital ₹10 lakh. Zerodha delivery charges as of Nov 2026 ([zerodha.com/charges](https://zerodha.com/charges)):
@@ -192,6 +223,7 @@ uv run pytest
 - `src/mab/costs.py`, `src/mab/tax.py`: charges per order; Indian capital-gains tax per financial year.
 - `src/mab/signals.py`: moving averages and the rules built on them.
 - `src/mab/stats.py`: trade statistics and profit concentration.
+- `src/mab/universe.py`: point-in-time universe and equal-weight sleeves for the survivorship test.
 - `src/mab/walkforward.py`: yearly re-selection on past data only (tested for look-ahead).
 - `src/mab/sweep.py`, `src/mab/overfit.py`: parameter grids; deflated Sharpe ratio and PBO (CSCV), tested on
   pure-noise and real-edge data.

@@ -67,3 +67,13 @@ def test_walkforward_figure_four_lines_per_symbol():
 def test_overlay_figure_three_lines_per_symbol():
     fig = overlay_figure({"NIFTY": _bars(0)})
     assert len(fig.data) == 3 and fig.data[0].name == "SMA-200 filter"
+
+
+def test_survivorship_table_renders_committed_results():
+    from mab.site import SURVIVORSHIP_JSON, survivorship_table
+
+    html = survivorship_table({})
+    if SURVIVORSHIP_JSON.exists():
+        assert "point-in-time" in html and "today" in html
+    else:
+        assert "mab report survivorship" in html
