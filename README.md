@@ -15,7 +15,7 @@ rebuilt weekly from fresh data by GitHub Actions.
 - [x] Rupee-accurate engine: next-open fills, Zerodha delivery charges, slippage, cash interest, STCG/LTCG
   tax with loss set-off and carry-forward, after-tax liquidation value
 - [x] SMA vs EMA; price filter vs fast/slow crossover
-- [ ] Trade statistics: win rate, payoff, expectancy, exposure, tax drag
+- [x] Trade statistics: win rate, payoff, break-even win rate, holding periods, profit concentration
 - [ ] Parameter sweep, deflated Sharpe ratio, probability of backtest overfitting
 - [ ] Walk-forward optimisation
 - [ ] Trend filter vs a same-exposure fixed mix
@@ -71,6 +71,25 @@ average is above the 200-day), each with a simple (SMA) or exponential (EMA) ave
   year against 6.3%. The rules did cut the worst drawdown (33–38% on average, against 47%), which section
   6 tests against a fair same-exposure benchmark.
 
+### 3. The 200-day filter is right a quarter of the time, and three trades carry all of its profit
+
+<table><tr>
+<td><a href="docs/img/trades_hist.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/trades_hist.png"><img src="docs/img/trades_hist.gif" alt="Distribution of NIFTY 200-day filter trade returns"></picture></a></td>
+<td><a href="docs/img/trades_concentration.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/trades_concentration.png"><img src="docs/img/trades_concentration.gif" alt="Best three trades alone vs all other trades compounded, six NSE series"></picture></a></td>
+</tr></table>
+
+- **Rarely right, right big.** The 200-day filter won only 14–26% of its trades, but its average win was
+  5–9× its average loss (NIFTY: +11.1% vs −1.6%). At that payoff it breaks even with a 10–17% win rate, so a
+  low win rate is not by itself a flaw.
+- **Losers are cut fast, winners run.** The median losing trade lasted 3–6 days; the median winner 148–188
+  days (TCS: 48).
+- **Three trades carry everything.** On every series, the three best trades alone compounded to +165% to
+  +303%, and all the other 45–69 trades together *lost* 25% to 65%. Measured in log returns, so trade size
+  doesn't matter. Miss one big trend (a late order, a day of hesitation, an outage) and most of the result
+  is gone, which is why such rules are hard to follow in practice.
+- **The 50/200 cross** trades 8–11 times in 14 years and wins more often (27–89%), but with so few trades
+  its statistics rest on a handful of outcomes.
+
 ## Assumptions
 
 Capital ₹10 lakh. Zerodha delivery charges as of Nov 2026 ([zerodha.com/charges](https://zerodha.com/charges)):
@@ -86,7 +105,7 @@ advice.
 uv sync
 uv run python scripts/fetch_data.py          # Yahoo Finance -> data/prices.parquet
 uv run mab run --symbol NIFTY --window 200   # one rule, after costs and tax
-uv run mab report engine                     # also: rules. Charts -> out/, numbers printed
+uv run mab report engine                     # also: rules, trades. Charts -> out/
 uv run python scripts/build_site.py          # dashboard -> site/index.html
 uv run pytest
 ```
@@ -96,6 +115,7 @@ uv run pytest
 - `src/mab/engine.py`: the backtest loop, in rupees, one long-or-flat position.
 - `src/mab/costs.py`, `src/mab/tax.py`: charges per order; Indian capital-gains tax per financial year.
 - `src/mab/signals.py`: moving averages and the rules built on them.
+- `src/mab/stats.py`: trade statistics and profit concentration.
 - `src/mab/reports.py`: README findings, reproducible with `mab report <topic>`.
 - `src/mab/site.py`: the dashboard, one static Plotly page; no server, no committed data.
 

@@ -13,6 +13,7 @@ from mab.costs import ZERODHA_DELIVERY
 from mab.data import INDEX, SYMBOLS, load_bars
 from mab.engine import backtest
 from mab.signals import above_ma, crossover
+from mab.stats import split_growth, trade_stats
 from mab.tax import INDIA_EQUITY
 
 FONT = "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
@@ -120,6 +121,31 @@ def rules_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure:
     return fig
 
 
+def trades_table(bars_by_symbol: dict[str, pd.DataFrame]) -> str:
+    """Trade statistics for the SMA-200 filter and SMA 50/200 cross, per symbol and rule."""
+    head = ["", '<span class="text">Rule</span>', "Trades", "Win rate", "Payoff",
+            "Break-even win rate", "Avg trade", "Median days, winners", "Median days, losers",
+            "Best 3 alone", "All others"]
+    rows = []
+    for sym, bars in bars_by_symbol.items():
+        for rule in ("SMA-200 filter", "SMA 50/200 cross"):
+            t = backtest(bars, RULES[rule][0](bars["close"]), ZERODHA_DELIVERY, INDIA_EQUITY,
+                         CAPITAL, RF).trades
+            if len(t) < 4:
+                continue
+            st = trade_stats(t)
+            best, rest = split_growth(t, 3)
+            cells = [f"{st['trades']}", f"{st['win rate']:.0%}", f"{st['payoff ratio']:.1f}×",
+                     f"{st['break-even win rate']:.0%}", f"{st['expectancy']:+.1%}",
+                     f"{st['median days, winners']:.0f}", f"{st['median days, losers']:.0f}",
+                     f"{best:+.0%}", f"{rest:+.0%}"]
+            nums = "".join(f"<td>{c}</td>" for c in cells).replace("-", "\u2212")
+            rows.append(f'<tr><th scope="row">{sym}</th><td class="text">{rule}</td>{nums}</tr>')
+    ths = "".join(f'<th scope="col">{h}</th>' for h in head)
+    return (f'<div class="table-scroll"><table class="data"><thead><tr>{ths}</tr></thead>'
+            f'<tbody>{"".join(rows)}</tbody></table></div>')
+
+
 SECTIONS = [
     ("Realistic backtest",
      "Signal at each close, trade at the next open, Zerodha delivery charges and 0.05% slippage on "
@@ -133,6 +159,11 @@ SECTIONS = [
      "or exponential (EMA) average. Filters trade about four times a year and most of their "
      "trades reverse within a month; crossovers trade under once a year but exit late.",
      rules_figure),
+    ("Trade statistics",
+     "Win rate is the share of trades that made money; payoff is the average win divided by the "
+     "average loss; a rule breaks even when its win rate equals 1 / (1 + payoff). The last two "
+     "columns compound the three best trades on their own, and every other trade together.",
+     trades_table),
 ]
 
 REPO = "https://github.com/Dhirajdas18/moving-average-backtest"

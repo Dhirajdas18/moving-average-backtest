@@ -34,6 +34,7 @@ class Result:
     costs_paid: pd.Series
     trades: pd.DataFrame
     liquidation_after_tax: float
+    gains: pd.DataFrame  # per financial year: short_term, long_term, tax (last row = liquidation)
 
     @property
     def returns(self) -> pd.Series:
@@ -59,6 +60,7 @@ def backtest(
     cash, shares, basis, entry = float(capital), 0.0, 0.0, None
     gains: dict[int, list[float]] = {}  # financial year -> [short-term, long-term]
     carry = Carry()
+    fy_rows: dict[int, tuple[float, float, float]] = {}
     trades, open_trade = [], None
     eq, pos, taxes, fees = (np.zeros(len(idx)) for _ in range(4))
 
@@ -80,8 +82,10 @@ def backtest(
         o = opens[i]
         # 1. tax for the financial year that just ended
         if tax is not None and i > 0 and financial_year(day) != financial_year(idx[i - 1]):
-            st, lt = gains.pop(financial_year(idx[i - 1]), [0.0, 0.0])
+            fy = financial_year(idx[i - 1])
+            st, lt = gains.pop(fy, [0.0, 0.0])
             due, carry = fy_tax(st, lt, carry, tax)
+            fy_rows[fy] = (st, lt, due)
             taxes[i] = due
             if due > cash and shares > 0:
                 fill = o * (1 - costs.slippage)
@@ -120,8 +124,11 @@ def backtest(
         if tax is not None:
             realise(idx[-1], shares, fill)
     if tax is not None:
-        st, lt = gains.pop(financial_year(idx[-1]), [0.0, 0.0])
-        final -= fy_tax(st, lt, carry, tax)[0]
+        fy = financial_year(idx[-1])
+        st, lt = gains.pop(fy, [0.0, 0.0])
+        due = fy_tax(st, lt, carry, tax)[0]
+        fy_rows[fy] = (st, lt, due)
+        final -= due
 
     if open_trade is not None:  # still invested at the end: value it at the last close
         trades.append(open_trade | {"exit_date": idx[-1], "exit_price": closes[-1],
@@ -139,4 +146,6 @@ def backtest(
         costs_paid=pd.Series(fees, index=idx, name="costs"),
         trades=t,
         liquidation_after_tax=float(final),
+        gains=pd.DataFrame.from_dict(fy_rows, orient="index",
+                                     columns=["short_term", "long_term", "tax"]).sort_index(),
     )

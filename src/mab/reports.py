@@ -11,6 +11,7 @@ from mab.costs import ZERODHA_DELIVERY, CostModel
 from mab.data import INDEX, SYMBOLS, load_bars
 from mab.engine import backtest
 from mab.signals import above_ma, crossover, sma
+from mab.stats import split_growth, top_share, trade_stats
 from mab.tax import INDIA_EQUITY
 
 CAPITAL = 1_000_000.0
@@ -213,4 +214,71 @@ def report_rules(out_dir: Path) -> dict:
     }
 
 
-REPORTS = {"engine": report_engine, "rules": report_rules}
+def report_trades(out_dir: Path) -> dict:
+    """Trades: win rate vs payoff, holding periods, profit concentration, tax mix."""
+    rows, split = {}, {}
+    for sym in [INDEX] + SYMBOLS:
+        bars = load_bars(sym)
+        for rule in ("SMA-200 filter", "SMA 50/200 cross"):
+            res = backtest(bars, RULES[rule](bars["close"]))
+            st = trade_stats(res.trades)
+            g = res.gains
+            pos_st, pos_lt = g["short_term"].clip(lower=0).sum(), g["long_term"].clip(lower=0).sum()
+            rows[(sym, rule)] = st | {
+                "top-3 share of profit": top_share(res.trades, 3),
+                "short-term share of gains": pos_st / (pos_st + pos_lt) if pos_st + pos_lt else 0,
+            }
+            if rule == "SMA-200 filter":
+                best, rest = split_growth(res.trades, 3)
+                split[sym] = {"best 3 trades": best, "all other trades": rest,
+                              "count": len(res.trades)}
+    table = pd.DataFrame(rows).T
+
+    bars = load_bars(INDEX)
+    t = backtest(bars, RULES["SMA-200 filter"](bars["close"])).trades
+    st = trade_stats(t)
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    r = t["return"] * 100
+    bins = np.arange(np.floor(r.min() / 2) * 2, r.max() + 4, 2)
+    ax.hist(r[r <= 0], bins=bins, color=plots.SERIES[7], alpha=0.85, label="losing trades")
+    ax.hist(r[r > 0], bins=bins, color=plots.SERIES[0], alpha=0.9, label="winning trades")
+    ax.axvline(0, color=plots.TEXT_2, lw=0.8)
+    ax.set_xlabel("return per trade after costs, %")
+    ax.set_ylabel("number of trades")
+    ax.legend(loc="upper right")
+    ax.text(0.98, 0.70, f"{len(t)} trades\nwin rate {st['win rate']:.0%}\n"
+            f"avg win {st['avg win']:+.1%}, avg loss {st['avg loss']:+.1%}\n"
+            f"payoff {st['payoff ratio']:.1f}×, "
+            f"break-even win rate {st['break-even win rate']:.0%}",
+            transform=ax.transAxes, ha="right", va="top", fontsize=9, color=plots.TEXT_2)
+    ax.set_title("NIFTY 200-day filter: many small losses, a few large wins")
+    plots.save(fig, out_dir, "trades_hist")
+
+    sp = pd.DataFrame(split).T
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    y = np.arange(len(sp))
+    ax.barh(y, sp["best 3 trades"] * 100, color=plots.SERIES[0], height=0.6,
+            label="best 3 trades alone")
+    ax.barh(y, sp["all other trades"] * 100, color=plots.SERIES[7], height=0.6,
+            label="all other trades, compounded")
+    for i, row in enumerate(sp.itertuples()):
+        ax.text(row[1] * 100, i, f"  3 of {int(row[3])} trades", ha="left", va="center",
+                fontsize=8, color=plots.TEXT_2)
+    ax.set_xlim(right=sp["best 3 trades"].max() * 100 * 1.25)
+    ax.axvline(0, color=plots.TEXT_2, lw=0.8)
+    ax.set_yticks(y, sp.index)
+    ax.invert_yaxis()
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel("compounded return, % (after costs)")
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=2)
+    ax.set_title("200-day filter: three trades made the money; the rest lost it", pad=28)
+    plots.save(fig, out_dir, "trades_concentration")
+
+    cols = ["trades", "win rate", "payoff ratio", "break-even win rate", "expectancy",
+            "profit factor", "median days, winners", "median days, losers",
+            "top-3 share of profit", "short-term share of gains"]
+    return {"trade stats": table[cols].astype(float).round(3).to_dict("index"),
+            "filter best-3 alone vs rest compounded": sp.round(3).to_dict("index")}
+
+
+REPORTS = {"engine": report_engine, "rules": report_rules, "trades": report_trades}

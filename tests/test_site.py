@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from mab.site import build_html, engine_figure, rules_figure
+from mab.site import build_html, engine_figure, rules_figure, trades_table
 
 
 def _bars(seed):
@@ -28,3 +28,9 @@ def test_rules_figure_five_lines_per_symbol():
     fig = rules_figure({"NIFTY": _bars(0), "ITC": _bars(1)})
     assert len(fig.data) == 10
     assert fig.data[4].name == "buy and hold"
+
+
+def test_trades_table_is_html_with_rows_per_symbol_and_rule():
+    html = trades_table({"NIFTY": _bars(0)})
+    assert html.startswith('<div class="table-scroll"><table class="data">')
+    assert html.count('<th scope="row">NIFTY</th>') >= 1
