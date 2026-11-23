@@ -17,7 +17,7 @@ rebuilt weekly from fresh data by GitHub Actions.
 - [x] SMA vs EMA; price filter vs fast/slow crossover
 - [x] Trade statistics: win rate, payoff, break-even win rate, holding periods, profit concentration
 - [x] Parameter sweep, deflated Sharpe ratio, probability of backtest overfitting (interactive heatmap)
-- [ ] Walk-forward optimisation
+- [x] Walk-forward optimisation
 - [ ] Trend filter vs a same-exposure fixed mix
 - [ ] Survivorship bias
 
@@ -118,6 +118,31 @@ click any cell to see that pair's equity curve.
   pair had been tried, still leaves only NIFTY's best pair above 0.95 (0.97; the others 0.84–0.94). Any
   realistic allowance for the search pulls it below.
 
+### 5. Choosing the best pair as you go kept the least of all
+
+<table><tr>
+<td><a href="docs/img/wf_nifty.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/wf_nifty.png"><img src="docs/img/wf_nifty.gif" alt="NIFTY 2018-2026: walk-forward vs hindsight-best pair vs fixed 50/200 vs buy and hold"></picture></a></td>
+<td><a href="docs/img/wf_decay.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/wf_decay.png"><img src="docs/img/wf_decay.gif" alt="Sharpe ratio of the chosen pair in its training years vs the year it was traded"></picture></a></td>
+</tr></table>
+
+Walk-forward optimisation is the honest version of "use the best setting": each January, the crossover pair
+with the best Sharpe over the previous three years is chosen and traded for that year, then the process
+repeats. Every approach below is measured over the same test years, 2018–2026, after costs and tax.
+
+- **Walk-forward kept −0.6% to +4.9% a year.** It was beaten on every series by the textbook 50/200 cross
+  (3.7–10.0%), by buy and hold (5.4–13.6%), and by the best pair chosen with hindsight (5.8–13.6%), which
+  no one could actually have traded.
+- **The chosen pair stopped working the moment it was chosen.** Its Sharpe averaged 0.6–0.9 over its three
+  training years and −0.15 to −0.54 in the year it was traded, on every series. In its trading year it
+  ranked, on average, between the 26th and 44th percentile of all 40 pairs: below the median on all six, so
+  picking last period's winner was worse than picking at random. This is section 4's overfitting
+  probability seen year by year.
+- **The pick kept changing:** six to eight switches in eight years (NIFTY: 30/150, 5/50, 75/250, 20/50,
+  20/50, 5/50, 50/100, 50/100, 20/50).
+- **Five training years instead of three** gave the same picture: walk-forward below buy and hold on 6 of 6.
+
+<a href="docs/img/wf_cagr.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/wf_cagr.png"><img src="docs/img/wf_cagr.gif" alt="Growth 2018-2026 by approach for six NSE series" width="720"></picture></a>
+
 ## Assumptions
 
 Capital ₹10 lakh. Zerodha delivery charges as of Nov 2026 ([zerodha.com/charges](https://zerodha.com/charges)):
@@ -133,7 +158,7 @@ advice.
 uv sync
 uv run python scripts/fetch_data.py          # Yahoo Finance -> data/prices.parquet
 uv run mab run --symbol NIFTY --window 200   # one rule, after costs and tax
-uv run mab report engine                     # also: rules, trades, sweep. Charts -> out/
+uv run mab report engine                     # also: rules trades sweep walkforward
 uv run python scripts/build_site.py          # dashboard -> site/index.html
 uv run pytest
 ```
@@ -144,6 +169,7 @@ uv run pytest
 - `src/mab/costs.py`, `src/mab/tax.py`: charges per order; Indian capital-gains tax per financial year.
 - `src/mab/signals.py`: moving averages and the rules built on them.
 - `src/mab/stats.py`: trade statistics and profit concentration.
+- `src/mab/walkforward.py`: yearly re-selection on past data only (tested for look-ahead).
 - `src/mab/sweep.py`, `src/mab/overfit.py`: parameter grids; deflated Sharpe ratio and PBO (CSCV), tested on
   pure-noise and real-edge data.
 - `src/mab/reports.py`: README findings, reproducible with `mab report <topic>`.

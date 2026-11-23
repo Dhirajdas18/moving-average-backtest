@@ -226,6 +226,33 @@ def sweep_section(bars_by_symbol: dict[str, pd.DataFrame]) -> str:
 </script>""")
 
 
+def walkforward_figure(bars_by_symbol: dict[str, pd.DataFrame]) -> go.Figure | str:
+    """Walk-forward vs hindsight-best vs fixed 50/200 vs buy and hold, over the test years."""
+    from mab.reports import APPROACH_COLORS, walk_forward_run
+
+    runs = {}
+    for sym, bars in bars_by_symbol.items():
+        try:
+            runs[sym] = walk_forward_run(bars)
+        except ValueError:  # too little history for three training years
+            continue
+    if not runs:
+        return "<p>Not enough history for a walk-forward test.</p>"
+    fig = go.Figure()
+    symbols = list(runs)
+    for i, sym in enumerate(symbols):
+        for name, res in runs[sym]["results"].items():
+            w = res.equity / 1e5
+            fig.add_scatter(x=list(w.index.strftime("%Y-%m-%d")), y=w.round(2).tolist(),
+                            name=name, visible=i == 0,
+                            line=dict(color=APPROACH_COLORS[name], width=2),
+                            hovertemplate="₹%{y:.2f} lakh")
+    _symbol_dropdown(fig, symbols, 4)
+    fig = _layout(fig, "₹ lakh (started with 10), after costs and tax paid so far")
+    fig.update_xaxes(range=None)
+    return fig
+
+
 SECTIONS = [
     ("Realistic backtest",
      "Signal at each close, trade at the next open, Zerodha delivery charges and 0.05% slippage on "
@@ -250,6 +277,12 @@ SECTIONS = [
      "buy and hold. The best cell is the one a backtest would brag about; on its own it proves "
      "little.",
      sweep_section),
+    ("Walk-forward",
+     "Each January, the crossover pair with the best Sharpe over the previous three years is "
+     "chosen and traded for that year; the years are stitched together. This is what following the "
+     "\u2018use the best setting\u2019 process would really have earned, next to the best pair "
+     "picked with hindsight, a fixed 50/200 cross and buy and hold, all from 2018.",
+     walkforward_figure),
 ]
 
 REPO = "https://github.com/Dhirajdas18/moving-average-backtest"

@@ -15,10 +15,21 @@ from mab.signals import above_ma, crossover, sma
 from mab.stats import split_growth, top_share, trade_stats
 from mab.sweep import FAST, SLOW, crossover_grid
 from mab.tax import INDIA_EQUITY
+from mab.walkforward import choose_by_year, splice
 
 CAPITAL = 1_000_000.0
 RF = 0.065
 FREE = CostModel.free()
+
+
+def _label_ends(ax, lines: dict, colors: dict, gap: float | None = None) -> None:
+    """Direct labels at each line's right end, nudged apart so none overlap."""
+    ends = {k: float(v.iloc[-1]) for k, v in lines.items()}
+    gap = gap if gap is not None else (max(ends.values()) - min(ends.values()) + 1e-9) * 0.08 + 0.3
+    floor = -1e18
+    for name in sorted(ends, key=ends.get):
+        floor = max(ends[name], floor + gap)
+        plots.label_line_end(ax, lines[name].index[-1], floor, name, colors[name])
 
 
 def cagr_of(value: float, idx: pd.DatetimeIndex, start: float = CAPITAL) -> float:
@@ -359,5 +370,116 @@ def report_sweep(out_dir: Path) -> dict:
                 int((table["median Sharpe"] > table["buy-and-hold Sharpe"]).sum())}
 
 
+APPROACH_COLORS = {"walk-forward": plots.SERIES[0], "best pair in hindsight": plots.MUTED,
+                   "fixed 50/200 cross": plots.SERIES[2], "buy and hold": plots.TEXT}
+
+
+def walk_forward_run(bars: pd.DataFrame, train_years: int = 3) -> dict:
+    """Walk-forward vs hindsight-best vs fixed 50/200 vs buy and hold over the same test years."""
+    m, r = crossover_grid(bars)
+    first = int(r.index[0].year) + train_years + (1 if r.index[0].month > 1 else 0)
+    if first > int(r.index[-1].year):
+        raise ValueError(f"not enough history for {train_years} training years")
+    choices = choose_by_year(r, train_years, first)
+    targets = {p: crossover(bars["close"], *p) for p in m.index}
+    test = bars.loc[f"{first}-01-01":]
+    approaches = {
+        "walk-forward": splice(targets, choices),
+        "best pair in hindsight": targets[m["sharpe"].idxmax()],
+        "fixed 50/200 cross": targets[(50, 200)],
+        "buy and hold": pd.Series(1, index=test.index),
+    }
+    results = {k: backtest(test, t.reindex(test.index).fillna(0)) for k, t in approaches.items()}
+    decay = []
+    for year, pair in choices.items():
+        tr = r[(r.index.year >= year - train_years) & (r.index.year < year)][pair]
+        te = r[r.index.year == year][pair]
+        decay.append((tr.mean() / tr.std() * np.sqrt(252),
+                      te.mean() / te.std() * np.sqrt(252) if te.std() > 0 else 0.0))
+    pct = []
+    for year, pair in choices.items():
+        te = r[r.index.year == year]
+        sr = te.mean() / te.std().replace(0, np.nan)
+        pct.append(float((sr < sr[pair]).mean()))
+    picks = list(choices.values())
+    return {"first": first, "percentile next year": float(np.mean(pct)), "choices": choices,
+            "results": results,
+            "cagr": {k: cagr_of(v.liquidation_after_tax, test.index) for k, v in results.items()},
+            "train sharpe": float(np.mean([d[0] for d in decay])),
+            "next-year sharpe": float(np.mean([d[1] for d in decay])),
+            "switches": sum(a != b for a, b in zip(picks, picks[1:], strict=False)),
+            "years": len(picks)}
+
+
+def report_walkforward(out_dir: Path) -> dict:
+    """Choose the best crossover on the past 3 years, trade it for a year, repeat."""
+    runs = {sym: walk_forward_run(load_bars(sym)) for sym in [INDEX] + SYMBOLS}
+    five = {sym: walk_forward_run(load_bars(sym), 5) for sym in [INDEX] + SYMBOLS}
+    cagr = pd.DataFrame({s: v["cagr"] for s, v in runs.items()}).T
+
+    n = runs[INDEX]
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    curves = {}
+    for name, res in n["results"].items():
+        w = res.equity / 1e5
+        ax.plot(w.index, w, color=APPROACH_COLORS[name], lw=2.2 if name == "walk-forward" else 1.6)
+        curves[name] = w
+    _label_ends(ax, curves, APPROACH_COLORS)
+    ax.set_ylabel("₹ lakh (started with 10), after costs and tax")
+    ax.set_title(f"NIFTY {n['first']}–2026: the honest walk-forward result trails everything")
+    plots.save(fig, out_dir, "wf_nifty")
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    y = np.arange(len(cagr))
+    h = 0.2
+    for k, name in enumerate(APPROACH_COLORS):
+        ax.barh(y + (k - 1.5) * h, cagr[name] * 100, height=h * 0.9, color=APPROACH_COLORS[name],
+                label=name)
+    ax.axvline(0, color=plots.TEXT_2, lw=0.8)
+    ax.set_yticks(y, cagr.index)
+    ax.invert_yaxis()
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel(f"growth, % a year after costs and tax ({n['first']}–2026)")
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=4, fontsize=8)
+    ax.set_title("Walk-forward kept the least on every series", pad=28)
+    plots.save(fig, out_dir, "wf_cagr")
+
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    syms = list(runs)
+    for i, sym in enumerate(syms):
+        a, b = runs[sym]["train sharpe"], runs[sym]["next-year sharpe"]
+        ax.plot([a, b], [i, i], color=plots.GRID, lw=3, zorder=1)
+        ax.scatter(a, i, color=plots.SERIES[0], s=70, zorder=3,
+                   label="Sharpe in its 3 training years" if i == 0 else None)
+        ax.scatter(b, i, color=plots.SERIES[7], s=70, zorder=3,
+                   label="Sharpe in the year it was traded" if i == 0 else None)
+    ax.axvline(0, color=plots.TEXT_2, lw=0.8)
+    ax.set_yticks(range(len(syms)), syms)
+    ax.invert_yaxis()
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel("annualised Sharpe ratio of the chosen pair (average over years)")
+    ax.legend(loc="lower left", bbox_to_anchor=(0, 1.0), ncol=2)
+    ax.set_title("The pair that looked best turned negative the year it was used", pad=28)
+    plots.save(fig, out_dir, "wf_decay")
+
+    return {
+        "test years from": {s: v["first"] for s, v in runs.items()},
+        "CAGR after costs and tax (3y training)": (cagr * 100).round(2).to_dict("index"),
+        "walk-forward below fixed 50/200":
+            int((cagr["walk-forward"] < cagr["fixed 50/200 cross"]).sum()),
+        "walk-forward below buy and hold": int((cagr["walk-forward"] < cagr["buy and hold"]).sum()),
+        "train vs next-year Sharpe": {
+            s: (round(v["train sharpe"], 2), round(v["next-year sharpe"], 2))
+            for s, v in runs.items()},
+        "switches": {s: f"{v['switches']} of {v['years'] - 1}" for s, v in runs.items()},
+        "chosen pair's percentile among all pairs, next year":
+            {s: round(v["percentile next year"], 2) for s, v in runs.items()},
+        "5y training: CAGR wf / hold": {s: (round(v["cagr"]["walk-forward"] * 100, 2),
+                                            round(v["cagr"]["buy and hold"] * 100, 2))
+                                        for s, v in five.items()},
+        "NIFTY picks": {y: f"{p[0]}/{p[1]}" for y, p in n["choices"].items()},
+    }
+
+
 REPORTS = {"engine": report_engine, "rules": report_rules, "trades": report_trades,
-           "sweep": report_sweep}
+           "sweep": report_sweep, "walkforward": report_walkforward}

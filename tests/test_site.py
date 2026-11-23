@@ -1,7 +1,14 @@
 import numpy as np
 import pandas as pd
 
-from mab.site import build_html, engine_figure, rules_figure, sweep_section, trades_table
+from mab.site import (
+    build_html,
+    engine_figure,
+    rules_figure,
+    sweep_section,
+    trades_table,
+    walkforward_figure,
+)
 
 
 def _bars(seed):
@@ -45,3 +52,12 @@ def test_sweep_section_has_heatmap_line_and_embedded_curves():
     data = json.loads(re.search(r'id="sweep-data">(.*?)</script>', html).group(1))
     assert data["NIFTY"]["best"] in data["NIFTY"]["curves"]
     assert len(data["NIFTY"]["curves"]) == 40
+
+
+def test_walkforward_figure_four_lines_per_symbol():
+    rng = np.random.default_rng(5)
+    idx = pd.bdate_range("2012-01-02", periods=1800)
+    c = 100 * np.exp(np.cumsum(rng.normal(0.0003, 0.01, 1800)))
+    fig = walkforward_figure({"NIFTY": pd.DataFrame({"open": c, "close": c}, index=idx)})
+    assert [t.name for t in fig.data] == ["walk-forward", "best pair in hindsight",
+                                          "fixed 50/200 cross", "buy and hold"]
