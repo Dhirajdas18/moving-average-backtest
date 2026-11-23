@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from mab.site import build_html, engine_figure, rules_figure, trades_table
+from mab.site import build_html, engine_figure, rules_figure, sweep_section, trades_table
 
 
 def _bars(seed):
@@ -34,3 +34,14 @@ def test_trades_table_is_html_with_rows_per_symbol_and_rule():
     html = trades_table({"NIFTY": _bars(0)})
     assert html.startswith('<div class="table-scroll"><table class="data">')
     assert html.count('<th scope="row">NIFTY</th>') >= 1
+
+
+def test_sweep_section_has_heatmap_line_and_embedded_curves():
+    import json
+    import re
+
+    html = sweep_section({"NIFTY": _bars(0)})
+    assert 'id="sweep-heat"' in html and 'id="sweep-line"' in html
+    data = json.loads(re.search(r'id="sweep-data">(.*?)</script>', html).group(1))
+    assert data["NIFTY"]["best"] in data["NIFTY"]["curves"]
+    assert len(data["NIFTY"]["curves"]) == 40

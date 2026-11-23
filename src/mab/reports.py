@@ -10,8 +10,10 @@ from mab import plots
 from mab.costs import ZERODHA_DELIVERY, CostModel
 from mab.data import INDEX, SYMBOLS, load_bars
 from mab.engine import backtest
+from mab.overfit import deflated_sharpe, pbo
 from mab.signals import above_ma, crossover, sma
 from mab.stats import split_growth, top_share, trade_stats
+from mab.sweep import FAST, SLOW, crossover_grid
 from mab.tax import INDIA_EQUITY
 
 CAPITAL = 1_000_000.0
@@ -281,4 +283,78 @@ def report_trades(out_dir: Path) -> dict:
             "filter best-3 alone vs rest compounded": sp.round(3).to_dict("index")}
 
 
-REPORTS = {"engine": report_engine, "rules": report_rules, "trades": report_trades}
+def _hold_sharpe(bars: pd.DataFrame) -> float:
+    r = bars["close"].pct_change().iloc[max(SLOW):] - RF / 252
+    return float(r.mean() / r.std() * np.sqrt(252))
+
+
+def report_sweep(out_dir: Path) -> dict:
+    """Every fast/slow SMA crossover: heatmap, deflated Sharpe of the best, overfitting odds."""
+    rows, grids = {}, {}
+    for sym in [INDEX] + SYMBOLS:
+        bars = load_bars(sym)
+        m, r = crossover_grid(bars)
+        daily = (r.mean() / r.std()).to_numpy()
+        best = m["sharpe"].idxmax()
+        rows[sym] = {"best pair": f"{best[0]}/{best[1]}", "best Sharpe": m["sharpe"].max(),
+                     "median Sharpe": m["sharpe"].median(),
+                     "buy-and-hold Sharpe": _hold_sharpe(bars),
+                     "deflated Sharpe": deflated_sharpe(r[best], daily), "PBO": pbo(r, 10),
+                     "pairs": len(m)}
+        grids[sym] = m["sharpe"]
+    table = pd.DataFrame(rows).T
+
+    g = grids[INDEX].unstack("slow").reindex(index=list(FAST), columns=list(SLOW))
+    hold = table.loc[INDEX, "buy-and-hold Sharpe"]
+    lim = float(np.nanmax(np.abs(g.to_numpy() - hold)))
+    cmap = plt.matplotlib.colors.LinearSegmentedColormap.from_list(
+        "div", [plots.SERIES[7], "#f1f0ec", plots.SERIES[0]])
+    fig, ax = plt.subplots(figsize=(9, 4.6))
+    ax.imshow(g.to_numpy(), cmap=cmap, vmin=hold - lim, vmax=hold + lim, aspect="auto")
+    for (i, j), v in np.ndenumerate(g.to_numpy()):
+        if not np.isnan(v):
+            ax.text(j, i, f"{v:.2f}", ha="center", va="center", fontsize=8,
+                    color="white" if abs(v - hold) > lim * 0.6 else plots.TEXT)
+    bi, bj = list(FAST).index(int(table.loc[INDEX, "best pair"].split("/")[0])), \
+        list(SLOW).index(int(table.loc[INDEX, "best pair"].split("/")[1]))
+    ax.add_patch(plt.Rectangle((bj - 0.5, bi - 0.5), 1, 1, fill=False, ec=plots.TEXT, lw=2))
+    ax.set_xticks(range(len(SLOW)), SLOW)
+    ax.set_yticks(range(len(FAST)), FAST)
+    ax.set_xlabel("slow average, days")
+    ax.set_ylabel("fast average, days")
+    ax.tick_params(length=0)
+    ax.grid(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_visible(False)
+    ax.set_title(f"NIFTY: Sharpe of 40 crossovers (blue beats buy and hold's {hold:.2f})")
+    plots.save(fig, out_dir, "sweep_heatmap")
+
+    fig, axes = plt.subplots(1, 2, figsize=(9, 4.6), sharey=True)
+    y = np.arange(len(table))
+    for ax, col, line, title, fmt in (
+            (axes[0], "deflated Sharpe", 0.95, "deflated Sharpe of the best pair", "{:.2f}"),
+            (axes[1], "PBO", 0.5, "probability of backtest overfitting", "{:.2f}")):
+        vals = table[col].astype(float)
+        ax.barh(y, vals, color=plots.SERIES[0] if col != "PBO" else plots.SERIES[7], height=0.6)
+        for i, v in enumerate(vals):
+            ax.text(v, i, " " + fmt.format(v), va="center", fontsize=9, color=plots.TEXT_2)
+        ax.axvline(line, color=plots.TEXT, lw=1, ls="--")
+        ax.text(line, len(table) - 0.45, f" {line}", fontsize=8, color=plots.TEXT_2, va="top")
+        ax.set_xlim(0, 1.12)
+        ax.set_title(title, fontsize=10, fontweight="normal", color=plots.TEXT_2)
+        ax.grid(axis="y", visible=False)
+    axes[0].set_yticks(y, table.index)
+    axes[0].invert_yaxis()
+    fig.suptitle("No best pair clears 0.95; overfitting odds are 50% or more on 5 of 6", x=0.06,
+                 ha="left", fontsize=13, fontweight="semibold", color=plots.TEXT)
+    plots.save(fig, out_dir, "sweep_overfit")
+
+    return {"per series": table.round(3).to_dict("index"),
+            "best beat buy and hold (in sample)":
+                int((table["best Sharpe"] > table["buy-and-hold Sharpe"]).sum()),
+            "median pair beat buy and hold":
+                int((table["median Sharpe"] > table["buy-and-hold Sharpe"]).sum())}
+
+
+REPORTS = {"engine": report_engine, "rules": report_rules, "trades": report_trades,
+           "sweep": report_sweep}

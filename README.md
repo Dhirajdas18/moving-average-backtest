@@ -16,7 +16,7 @@ rebuilt weekly from fresh data by GitHub Actions.
   tax with loss set-off and carry-forward, after-tax liquidation value
 - [x] SMA vs EMA; price filter vs fast/slow crossover
 - [x] Trade statistics: win rate, payoff, break-even win rate, holding periods, profit concentration
-- [ ] Parameter sweep, deflated Sharpe ratio, probability of backtest overfitting
+- [x] Parameter sweep, deflated Sharpe ratio, probability of backtest overfitting (interactive heatmap)
 - [ ] Walk-forward optimisation
 - [ ] Trend filter vs a same-exposure fixed mix
 - [ ] Survivorship bias
@@ -90,6 +90,32 @@ average is above the 200-day), each with a simple (SMA) or exponential (EMA) ave
 - **The 50/200 cross** trades 8–11 times in 14 years and wins more often (27–89%), but with so few trades
   its statistics rest on a handful of outcomes.
 
+### 4. The best of 40 parameter pairs beats buy and hold in hindsight, and that proves nothing
+
+<table><tr>
+<td><a href="docs/img/sweep_heatmap.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/sweep_heatmap.png"><img src="docs/img/sweep_heatmap.gif" alt="NIFTY Sharpe ratio for 40 fast/slow crossover pairs"></picture></a></td>
+<td><a href="docs/img/sweep_overfit.png"><picture><source media="(prefers-reduced-motion: reduce)" srcset="docs/img/sweep_overfit.png"><img src="docs/img/sweep_overfit.gif" alt="Deflated Sharpe of the best pair and probability of backtest overfitting, six series"></picture></a></td>
+</tr></table>
+
+Every fast/slow SMA crossover with fast in 5–100 days and slow in 20–300 days (40 pairs), after costs,
+Sharpe ratio against a 6.5% risk-free rate. On the [dashboard](https://dhirajdas18.github.io/moving-average-backtest/#parameter-sweep),
+click any cell to see that pair's equity curve.
+
+- **The "best" pair changes with the stock:** 20/50 (NIFTY), 100/300, 30/200, 75/300, 10/250 and 50/250.
+  There is no universal setting, only a different lucky one per series.
+- **In hindsight the best pair looks good:** it beat buy and hold's Sharpe on 4 of 6 series (NIFTY 0.52 vs
+  0.37). The *median* pair beat buy and hold on only 1 of 6.
+- **The deflated Sharpe ratio** (Bailey & López de Prado, 2014) asks how likely the best result is to be real
+  once you account for having tried 40 variants and for fat tails. It came out at 0.44–0.77 against the
+  usual 0.95 bar. None of the six "winners" is convincing.
+- **The probability of backtest overfitting** (Bailey et al., 2017) splits the history into halves every
+  possible way (252 splits) and asks how often the in-sample winner falls to the bottom half out of sample.
+  It was 0.44–0.84, and 0.5 or higher on 5 of 6 series, so picking the best pair was no better than picking
+  at random. One sample's PBO is itself noisy (it ranges 0.1–0.95 on pure noise in tests), so the
+  consistent pattern across series matters more than any single value.
+- The 40 pairs overlap heavily (neighbours behave alike), so they count as fewer independent tries. That
+  lowers the bar the deflated Sharpe sets, which makes the failure to clear it more telling, not less.
+
 ## Assumptions
 
 Capital ₹10 lakh. Zerodha delivery charges as of Nov 2026 ([zerodha.com/charges](https://zerodha.com/charges)):
@@ -105,7 +131,7 @@ advice.
 uv sync
 uv run python scripts/fetch_data.py          # Yahoo Finance -> data/prices.parquet
 uv run mab run --symbol NIFTY --window 200   # one rule, after costs and tax
-uv run mab report engine                     # also: rules, trades. Charts -> out/
+uv run mab report engine                     # also: rules, trades, sweep. Charts -> out/
 uv run python scripts/build_site.py          # dashboard -> site/index.html
 uv run pytest
 ```
@@ -116,6 +142,8 @@ uv run pytest
 - `src/mab/costs.py`, `src/mab/tax.py`: charges per order; Indian capital-gains tax per financial year.
 - `src/mab/signals.py`: moving averages and the rules built on them.
 - `src/mab/stats.py`: trade statistics and profit concentration.
+- `src/mab/sweep.py`, `src/mab/overfit.py`: parameter grids; deflated Sharpe ratio and PBO (CSCV), tested on
+  pure-noise and real-edge data.
 - `src/mab/reports.py`: README findings, reproducible with `mab report <topic>`.
 - `src/mab/site.py`: the dashboard, one static Plotly page; no server, no committed data.
 

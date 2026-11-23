@@ -14,6 +14,7 @@ from mab.data import INDEX, SYMBOLS, load_bars
 from mab.engine import backtest
 from mab.signals import above_ma, crossover
 from mab.stats import split_growth, trade_stats
+from mab.sweep import FAST, SLOW, crossover_grid
 from mab.tax import INDIA_EQUITY
 
 FONT = "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif"
@@ -146,6 +147,85 @@ def trades_table(bars_by_symbol: dict[str, pd.DataFrame]) -> str:
             f'<tbody>{"".join(rows)}</tbody></table></div>')
 
 
+def _weekly(equity: pd.Series) -> list[float]:
+    return (equity.resample("W-FRI").last() / 1e5).round(2).tolist()
+
+
+def sweep_section(bars_by_symbol: dict[str, pd.DataFrame]) -> str:
+    """Heatmap of every crossover pair's Sharpe; click a cell to plot that pair's equity curve."""
+    symbols = list(bars_by_symbol)
+    heat = go.Figure()
+    data = {}
+    scale = [[0, plots.SERIES[7]], [0.5, "#f1f0ec"], [1, plots.SERIES[0]]]
+    for i, sym in enumerate(symbols):
+        bars = bars_by_symbol[sym]
+        m, _ = crossover_grid(bars)
+        g = m["sharpe"].unstack("slow").reindex(index=list(FAST), columns=list(SLOW))
+        hold = backtest(bars, pd.Series(1, index=bars.index), ZERODHA_DELIVERY, INDIA_EQUITY,
+                        CAPITAL, RF)
+        r = bars["close"].pct_change().iloc[max(SLOW):] - RF / 252
+        hold_sr = float(r.mean() / r.std() * (252 ** 0.5))
+        curves = {}
+        for (f, sl) in m.index:
+            res = backtest(bars, crossover(bars["close"], f, sl), ZERODHA_DELIVERY, INDIA_EQUITY,
+                           CAPITAL, RF)
+            curves[f"{f}/{sl}"] = _weekly(res.equity)
+        best = m["sharpe"].idxmax()
+        data[sym] = {"dates": list(hold.equity.resample("W-FRI").last().index.strftime("%Y-%m-%d")),
+                     "hold": _weekly(hold.equity), "curves": curves, "best": f"{best[0]}/{best[1]}"}
+        lim = float((g - hold_sr).abs().max().max())
+        heat.add_heatmap(
+            z=g.round(2).to_numpy(), x=[str(v) for v in SLOW], y=[str(v) for v in FAST],
+            visible=i == 0, colorscale=scale, zmid=hold_sr, zmin=hold_sr - lim, zmax=hold_sr + lim,
+            texttemplate="%{z:.2f}", showscale=False, name=sym,
+            hovertemplate=f"{sym} %{{y}}/%{{x}}: Sharpe %{{z:.2f}} (buy and hold {hold_sr:.2f})"
+                          "<extra></extra>")
+    _symbol_dropdown(heat, symbols, 1)
+    heat.update_layout(paper_bgcolor=plots.SURFACE, plot_bgcolor=plots.SURFACE, height=440,
+                       font=dict(family=FONT, color=plots.TEXT_2, size=12),
+                       margin=dict(l=64, r=24, t=64, b=48),
+                       xaxis=dict(title="slow average, days", type="category"),
+                       yaxis=dict(title="fast average, days", type="category",
+                                  autorange="reversed"))
+    first = symbols[0]
+    line = go.Figure()
+    d0 = data[first]
+    for name, ys, color in ((f"{first} {d0['best']} crossover", d0["curves"][d0["best"]],
+                             plots.SERIES[0]),
+                            (f"{first} buy and hold", d0["hold"], plots.TEXT)):
+        line.add_scatter(x=data[first]["dates"], y=ys, name=name, line=dict(color=color, width=2),
+                         hovertemplate="₹%{y:.2f} lakh")
+    line = _layout(line, "₹ lakh (started with 10), after costs and tax paid so far")
+    line.update_xaxes(range=None)
+    cfg = {"displaylogo": False, "responsive": True}
+    return (
+        heat.to_html(full_html=False, include_plotlyjs=False, div_id="sweep-heat", config=cfg)
+        + line.to_html(full_html=False, include_plotlyjs=False, div_id="sweep-line", config=cfg)
+        + f'<script type="application/json" id="sweep-data">{json.dumps(data)}</script>'
+        + """<script>
+(() => {
+  const heat = document.getElementById("sweep-heat"), line = document.getElementById("sweep-line");
+  const data = JSON.parse(document.getElementById("sweep-data").textContent);
+  const symbols = Object.keys(data);
+  const show = (sym, pair) => {
+    const d = data[sym];
+    Plotly.restyle(line, {x: [d.dates, d.dates], y: [d.curves[pair], d.hold],
+                          name: [sym + " " + pair + " crossover", sym + " buy and hold"]});
+  };
+  heat.on("plotly_click", (e) => {
+    const p = e.points[0];
+    const sym = symbols[heat.data.findIndex((t) => t.visible !== false)];
+    const pair = p.y + "/" + p.x;
+    if (data[sym].curves[pair]) show(sym, pair);
+  });
+  heat.on("plotly_update", () => {
+    const sym = symbols[heat.data.findIndex((t) => t.visible !== false)];
+    show(sym, data[sym].best);
+  });
+})();
+</script>""")
+
+
 SECTIONS = [
     ("Realistic backtest",
      "Signal at each close, trade at the next open, Zerodha delivery charges and 0.05% slippage on "
@@ -164,6 +244,12 @@ SECTIONS = [
      "average loss; a rule breaks even when its win rate equals 1 / (1 + payoff). The last two "
      "columns compound the three best trades on their own, and every other trade together.",
      trades_table),
+    ("Parameter sweep",
+     "Sharpe ratio (after costs, before tax) of every fast/slow simple-average crossover. Blue "
+     "cells beat buy and hold, red cells lose to it. Click any cell to plot that pair against "
+     "buy and hold. The best cell is the one a backtest would brag about; on its own it proves "
+     "little.",
+     sweep_section),
 ]
 
 REPO = "https://github.com/Dhirajdas18/moving-average-backtest"
