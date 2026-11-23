@@ -152,7 +152,7 @@ repeats. Every approach below is measured over the same test years, 2018–2026,
 </tr></table>
 
 Section 2 found the rules cut the worst drawdown (33–38% against 47% for buy and hold). But they were only
-invested 57–81% of the time, and holding less stock lowers risk by itself. The fair test is a fixed mix
+invested 57–80% of the time, and holding less stock lowers risk by itself. The fair test is a fixed mix
 holding the rule's average exposure steadily (rebalanced when it drifts 5%, with FIFO tax lots), after the
 same costs and tax, so any difference comes from timing alone. Two rules × six series = 12 cases.
 
