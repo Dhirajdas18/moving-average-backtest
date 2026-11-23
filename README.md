@@ -113,8 +113,10 @@ click any cell to see that pair's equity curve.
   It was 0.44–0.84, and 0.5 or higher on 5 of 6 series, so picking the best pair was no better than picking
   at random. One sample's PBO is itself noisy (it ranges 0.1–0.95 on pure noise in tests), so the
   consistent pattern across series matters more than any single value.
-- The 40 pairs overlap heavily (neighbours behave alike), so they count as fewer independent tries. That
-  lowers the bar the deflated Sharpe sets, which makes the failure to clear it more telling, not less.
+- The 40 pairs overlap heavily (neighbours behave alike), so they are fewer than 40 independent tries, and
+  counting all 40 sets the bar a little too high. The extreme opposite, no allowance at all as if only one
+  pair had been tried, still leaves only NIFTY's best pair above 0.95 (0.97; the others 0.84–0.94). Any
+  realistic allowance for the search pulls it below.
 
 ## Assumptions
 

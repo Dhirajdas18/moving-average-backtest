@@ -299,7 +299,10 @@ def report_sweep(out_dir: Path) -> dict:
         rows[sym] = {"best pair": f"{best[0]}/{best[1]}", "best Sharpe": m["sharpe"].max(),
                      "median Sharpe": m["sharpe"].median(),
                      "buy-and-hold Sharpe": _hold_sharpe(bars),
-                     "deflated Sharpe": deflated_sharpe(r[best], daily), "PBO": pbo(r, 10),
+                     "deflated Sharpe": deflated_sharpe(r[best], daily),
+                     "no-deflation PSR": deflated_sharpe(
+                         r[best], np.array([r[best].mean() / r[best].std()])),
+                     "PBO": pbo(r, 10),
                      "pairs": len(m)}
         grids[sym] = m["sharpe"]
     table = pd.DataFrame(rows).T
