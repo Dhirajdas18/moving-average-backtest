@@ -186,26 +186,28 @@ previous six months, known before each rebalance), re-chosen each January from 2
 against today's 50 most-traded stocks applied to the whole history (**today's list**). Equal weight,
 rebalanced yearly, after costs, before tax.
 
-- **Buy and hold:** today's list turned ₹1 into ₹25 (28.3% a year). The honest point-in-time universe turned
-  it into ₹3.2 (9.5% a year). Today's most-traded list includes recent winners such as BSE and MCX, so
+- **Buy and hold:** today's list turned ₹1 into ₹26 (28.7% a year). The honest point-in-time universe turned
+  it into ₹3.4 (9.8% a year). Today's most-traded list includes recent winners such as BSE and MCX, so
   much of this gap is hindsight winner-picking (turnover rises with price) rather than delisted
   companies alone. A list chosen by market value, such as today's NIFTY 50, would probably show a smaller
   gap; that wasn't measured here.
 - **29 of the 2014 top 50 aren't in today's list.** Most simply lost turnover rank, but seven lost more
-  than half their value: RCOM (−99%), Reliance Capital and Jaiprakash Associates (−97%), Reliance
+  than half their value: RCOM (−99%), Jaiprakash Associates (−97%), Reliance Capital (−96%), Reliance
   Infrastructure (−87%), YES Bank (−78%), Reliance Power (−76%) and Zee (−75%). A today's-list backtest
   never holds them.
-- **The 200-day filter was overstated too,** by 14 points a year (23.8% vs 9.5%).
-- **A lead, not a finding:** on the honest universe, the per-stock 200-day filter matched buy and hold's
-  growth (9.5%) with a much smaller worst drawdown (−15% vs −51%), and beat a fixed mix with the same 58%
-  average exposure (8.7% a year, −29% drawdown). Across 50 stocks each filter stepped aside from its own
+- **The 200-day filter was overstated too,** by 15 points a year (24.2% vs 9.6%).
+- **A lead, not a finding:** on the honest universe, the per-stock 200-day filter nearly matched buy and
+  hold's growth (9.6% vs 9.8% a year) with a much smaller worst drawdown (−15% vs −51%), and beat a fixed
+  mix with the same 58% average exposure (8.9% a year, −29% drawdown). Across 50 stocks each filter stepped aside from its own
   collapse, which a single-stock test (section 6) can't show. But it is one period, before tax (a filter
   trading 50 stocks would realise many short-term gains), with simplified costs, close-to-close fills and
   a costless daily-rebalanced mix, so it needs the full engine and a walk-forward test before it means
   anything.
-- **Data note:** the source panel sets every daily move above 35% to zero as a possible corporate action.
-  This section restores the raw return on such days unless they match a real split or bonus, so genuine
-  crashes like YES Bank's −56% on 6 Mar 2020 count. Delisted stocks exit at their last traded price,
+- **Data note:** returns are set to zero only on real corporate-action days (splits, bonuses, demergers,
+  rights issues and schemes from NSE's official corporate-actions list, plus listing days), so genuine
+  crashes like YES Bank's −56% on 6 Mar 2020 count. An older version of the data panel zeroed every
+  move above 35%; for such panels the code restores the raw return unless the day matches a split or
+  bonus. Delisted stocks exit at their last traded price,
   which flatters the point-in-time universe (the conservative direction for this comparison).
 - Reproduce with `MAB_LAKE_DIR=<folder with panel.parquet> uv run mab report survivorship`. The NSE data
   isn't committed; only the aggregate results (`docs/data/survivorship.json`) are.

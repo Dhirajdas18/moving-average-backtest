@@ -66,3 +66,20 @@ def test_lake_repair_restores_real_moves_not_matched_to_a_corporate_action(tmp_p
     prices, _ = load_lake(tmp_path)
     assert prices["YES"].iloc[-1] / prices["YES"].iloc[0] == pytest.approx(0.44)  # real crash kept
     assert prices["SPLIT"].iloc[-1] / prices["SPLIT"].iloc[0] == pytest.approx(1.0)  # split ignored
+
+
+def test_a_lake_built_with_the_official_nse_list_is_trusted_as_is(tmp_path):
+    from mab.universe import load_lake
+
+    idx = pd.bdate_range("2026-04-28", periods=3)
+    panel = pd.DataFrame({
+        "date": idx, "symbol": "VEDL",
+        "close": [770.0, 271.0, 271.0], "prev_close": [770.0, 770.0, 271.0],
+        "ret": [0.0, 0.0, 0.0],  # demerger day zeroed by the lake
+        "ca_day": [False, True, False], "turnover": 1.0,
+    })
+    panel.to_parquet(tmp_path / "panel.parquet")
+    (tmp_path / "_ref" / "nse_ca").mkdir(parents=True)
+    (tmp_path / "_ref" / "nse_ca" / "nse_ca.csv").write_text("SYMBOL,PURPOSE,EX-DATE\n")
+    prices, _ = load_lake(tmp_path)
+    assert prices["VEDL"].iloc[-1] == pytest.approx(prices["VEDL"].iloc[0])  # not a fake crash

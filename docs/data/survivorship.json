@@ -1,35 +1,35 @@
 {
  "table": {
   "point-in-time | buy and hold": {
-   "CAGR": 0.09453084643934351,
-   "max drawdown": -0.5111811423815168,
-   "Sharpe": 0.23995096887280706
+   "CAGR": 0.09832447761095753,
+   "max drawdown": -0.5088198396139179,
+   "Sharpe": 0.25875825596557006
   },
   "point-in-time | 200-day filter": {
-   "CAGR": 0.09527827950686252,
-   "max drawdown": -0.15216730607269602,
-   "Sharpe": 0.31439924610799375
+   "CAGR": 0.09610763532923339,
+   "max drawdown": -0.1510551287899985,
+   "Sharpe": 0.32145973536131517
   },
   "today's list | buy and hold": {
-   "CAGR": 0.2832456020703895,
-   "max drawdown": -0.4161858513491651,
-   "Sharpe": 1.1242719567705524
+   "CAGR": 0.28736105581549487,
+   "max drawdown": -0.4146135666889674,
+   "Sharpe": 1.1432453087614154
   },
   "today's list | 200-day filter": {
-   "CAGR": 0.23827434302360495,
-   "max drawdown": -0.12305284504484304,
-   "Sharpe": 1.319201761022391
+   "CAGR": 0.2416557337220988,
+   "max drawdown": -0.11267424044810248,
+   "Sharpe": 1.3455273613232717
   },
   "point-in-time | fixed 58% mix": {
-   "CAGR": 0.08694656947744273,
-   "max drawdown": -0.2904669087978181,
-   "Sharpe": 0.2399509688728073
+   "CAGR": 0.08919412786118741,
+   "max drawdown": -0.29017608241398674,
+   "Sharpe": 0.25875825596557
   }
  },
- "exposure of filter": 0.5782367758186399,
+ "exposure of filter": 0.581007556675063,
  "\u20b91 grows to (buy and hold)": {
-  "today's list": 24.9,
-  "point-in-time": 3.2
+  "today's list": 25.9,
+  "point-in-time": 3.35
  },
  "members dropped": 29,
  "dropped and lost over half": 7,
