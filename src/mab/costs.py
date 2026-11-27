@@ -1,6 +1,6 @@
 """Trading costs for NSE delivery trades (Zerodha), as rupee amounts per order.
 
-Rates as of 2026-11 (zerodha.com/charges), matching the reference model's spec §6. Check the broker's
+Rates as of 2026-11 (zerodha.com/charges), matching the reference spec §6. Check the broker's
 calculator before relying on them; they change.
 """
 
